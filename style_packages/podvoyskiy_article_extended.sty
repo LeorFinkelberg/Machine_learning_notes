@@ -84,7 +84,7 @@
 				\@author
 			\end{tabular}\par	
 		}%
-		\vskip 1em%
+		%\vskip 1em%
 		%{\large \@date}%
 	\end{center}%
 	\par
@@ -159,6 +159,16 @@
 	}\par
 }
 
+\newcommand{\quinta}[1]{%
+    \noindent
+    \parbox{\textwidth}{%
+        \vspace*{7pt}\par
+        \hrule\vspace*{2pt}\hrule\vspace*{5pt}
+        {\small\itshape Обобщение по вопросу }\par
+        {\parindent=7mm\small#1}\vspace*{5pt}
+        \hrule\vspace*{2pt}\hrule\vspace*{5pt}
+    }\par
+}
 \RequirePackage{listings}  % для офрмления листингов программ (альтернатива, например, fancyvrb)
 \lstloadlanguages{
     XML,
