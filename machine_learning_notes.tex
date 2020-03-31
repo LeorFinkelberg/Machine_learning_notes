@@ -22,6 +22,40 @@
 
 \tableofcontents
 
+
+\section{Установка пакета \texttt{xgboost} на \texttt{Windows}}
+
+Устанавливать пакет \texttt{xgboost} рекомендуется с помощью следующей команды
+
+\begin{lstlisting}[
+numbers = none
+]
+conda install -c anaconda py-xgboost 
+\end{lstlisting}
+
+Существует альтернативный способ установки пакета \texttt{xgboost} (разумеется он работает и для других пакетов). Для начала требуется вывести список доступных каналов \ref{fig:xgboost_conda_search}, по которым будет проводиться поиск интересующего пакета (в данном случае пакета \texttt{xgboost}), а затем можно воспользоваться конструкцией
+
+\begin{lstlisting}[
+numbers = none
+]
+anaconda search -t conda xgboost
+\end{lstlisting}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.85]{figures/xgboost_conda_search.png}
+	\caption{Окно командной оболочки \texttt{cmd.exe} со списком доступных каналов, по которым будет проводиться поиск пакета \texttt{xgboost} }\label{fig:xgboost_conda_search}
+\end{figure}
+
+
+После, выбрав канал, можно приступать к установке пакета
+
+\begin{lstlisting}[
+numbers = none
+]
+conda install -c free py-xgboost
+\end{lstlisting}
+
 \section{Области видимости в языке \texttt{Python}}
 
 Когда мы говорим о поиске значения имени применительно к программному коду, под термином \emph{область видимости} подразумевается \emph{пространство имен} -- то есть место в программном коде, где имени было присвоено значение \cite{lutz:learningpython-2011}.
@@ -258,6 +292,249 @@ print(acts[2](2))  # вернет 2**2
 
 Этот метод относится к классу DL-методов калибровки, так как он был разработан именно для калибровки нейронных сетей. Метод представляет собой простое многомерное обобщение шкалирования Платта.
 
+\section{Приемы работы с менеджером пакетов \texttt{conda}}
+
+\subsection{Создание виртуального окружения}
+
+Создать виртуальное окружение \texttt{dashenv}
+
+\begin{lstlisting}[
+numbers = none
+]
+conda create --name dashenv
+\end{lstlisting}
+
+Создать виртуальное окружение с указанием версии \texttt{Python}
+
+\begin{lstlisting}[
+numbers = none
+]
+conda create --name testenv python=3.6
+\end{lstlisting}
+
+Создать виртуальное окружение с указанием пакета
+
+\begin{lstlisting}[
+numbers = none
+]
+conda create --name testenv scipy
+\end{lstlisting}
+
+Создать виртуальное окружение с указанием версии \texttt{Python} и нескольких пакетов
+
+\begin{lstlisting}[
+numbers = none
+]
+conda create --name testenv python=3.6 scipy=0.15.0 astroid babel
+\end{lstlisting}
+
+\remark{%
+Рекомендуется устанавливать сразу несколько пакетов, чтобы избежать конфликта зависимостей
+}
+
+Для того чтобы при создании нового виртуального окружения не требовалось каждый раз устанавливать базовые пакеты, которые обычно используются в работе, можно привести их список в конфигурационном файле \texttt{.condarc} в разделе \texttt{create\_default\_packages}
+
+\begin{lstlisting}[
+title = {\sffamily .condarc},
+numbers = none
+]
+ssl_verify: true
+channels:
+ - conda-forge
+ - defaults
+report_errors: true
+default_python:
+create_default_packages:
+ - matplotlib
+ - numpy
+ - scipy
+ - pandas
+ - seaborn
+\end{lstlisting}
+
+Если для текущего виртуального окружения не требуется устанавливать пакеты из набора по умолчанию, то при создании виртуального окружения следует указать специальный флаг
+\lstinline{--no-default-packages}
+
+\begin{lstlisting}[
+numbers = none
+]
+conda create --no-default-packages --name testenv python
+\end{lstlisting}
+
+Создать виртуальное окружение можно и из файла \texttt{environment.yml} (первая строка этого файла станет именем виртуального окружения)
+
+\begin{lstlisting}[
+title = {\sffamily environment.yml},
+numbers = none
+]
+name: stats2
+channels:
+ - conda-forge
+ - defaults
+dependencies:
+ - python=3.6   # or 2.7
+ - bokeh=0.9.2
+ - numpy=1.9.*
+ - nodejs=0.10.*
+ - flask
+ - pip:
+  - Flask-Testing
+\end{lstlisting}
+
+\begin{lstlisting}[
+numbers = none
+]
+conda env create -f environment.yml
+\end{lstlisting}
+
+При создании виртуального окружения можно указать путь до целевой директории, где будут размещаться файлы окружения. Следующая команда создаст виртуальное окружение в поддиректории текущей рабочей директории \texttt{envs}\footnote{В данном случае чтобы удалить виртуальную среду достачно просто удалить директорию \texttt{envs}}
+
+\begin{lstlisting}[
+numbers = none
+]
+conda create --prefix ./envs jupyterlab matplotlib
+\end{lstlisting}
+
+С помощью файла спецификации можно создать \emph{идентичное виртуальное окружение} (i) на той же платформе операционной системы, (ii) на той же машине, (iii) на какой-либо другой машине (перенести настройки окружения).
+
+Для этого предварительно требуется создать собственно файл спецификации
+
+\begin{lstlisting}[
+numbers = none
+]
+conda list --explicit > spec-file.txt
+\end{lstlisting}
+
+Имя файла спецификации может быть любым. Файл спецификации обычно не является кросс-платформенным и поэтому имеет комментарий в верхней части файла (\lstinline{#platform: osx-64}), указывающий платформу, на которой он был создан.
+
+Теперь для того чтобы \emph{создать} окружение достаточно воспользоваться командой
+
+\begin{lstlisting}[
+numbers = none
+]
+conda create --name myenv --file spec-file.txt
+\end{lstlisting}
+
+Файл спецификации можно использовать для установки пакетов в существующее окружение
+
+\begin{lstlisting}[
+numbers = none
+]
+conda install --name myenv --file spec-file.txt
+\end{lstlisting}
+
+
+\subsection{Активация/деактивация виртуального окружения}
+
+Активировать виртуальное окружение \texttt{dashenv}
+
+\begin{lstlisting}[
+numbers = none
+]
+conda activate dashenv
+\end{lstlisting}
+
+Активировать виртуальное окружение в случае, когда оно создавалось с \lstinline{--prefix}, можно указав полный путь до окружения
+\begin{lstlisting}[
+numbers = none
+]
+conda activate E:\[WorkDirectory]\[Python_projects]\directory_for_experiments\envs
+\end{lstlisting}
+
+В этом случае в строке приглашения командной оболочки по умолчанию будет отображаться полный путь до окружения. Чтобы заменить длинный префикс в имени окружения на более удобный псевдоним достаточно использовать конструкцию
+
+\begin{lstlisting}[
+numbers = none
+]
+conda config --set env_prompt ({name})
+\end{lstlisting}
+которая добавит в конфигурационный файл \texttt{.condarc} следующую строку
+
+\begin{lstlisting}[
+title = {\sffamily .condarc},
+numbers = none
+]
+...
+env_prompt: ({name})
+\end{lstlisting}
+и теперь имя окружения будет \texttt{(envs)}.
+
+Деактивировать виртуальное окружение
+
+\begin{lstlisting}[
+numbers = none
+]
+conda deactivate
+\end{lstlisting}
+
+\subsection{Обновление виртуального окружения}
+
+Обновить виртуальное окружение может потребоваться в следующих случаях:
+
+\begin{itemize}
+	\item обновилась одна из ключевых зависимостей,
+	
+	\item требуется добавить пакет (добавление зависимости),
+	
+	\item требуется добавить один пакет и удалить другой.
+\end{itemize}
+
+В любом из этих случаев все что нужно для того чтобы обновить виртуальное окружение это просто обновить файл \texttt{environment.yml}\footnote{Этот файл должен находится в той же директории что и директория окружения \texttt{envs}}, а затем запустить команду
+
+\begin{lstlisting}[
+numbers = none
+]
+conda env update --prefix ./envs --file environment.yml --prune
+\end{lstlisting}
+
+Опция \lstinline{--prune} приводит к тому, что \texttt{conda} удаляет все зависимости, которые больше не нужны для окружения.
+
+\subsection{Вывод информации о виртуальном окружении}
+
+Вывести список доступных виртуальных окружений
+
+\begin{lstlisting}[
+numbers = none
+]
+conda env list
+\end{lstlisting}
+
+Вывести список пакетов, установленных в указанном окружении
+
+\begin{lstlisting}[
+numbers = none
+]
+conda list --name myenv
+\end{lstlisting}
+
+Вывести информацию по конкретному пакету указанного окружения
+
+\begin{lstlisting}[
+numbers = none
+]
+conda list --name dashenv matplotlib
+\end{lstlisting}
+
+
+\subsection{Удаление виртуального окружения}
+
+Удалить виртуальное окружение \texttt{heroku\_env}
+
+\begin{lstlisting}[
+numbers = none
+]
+conda env remove --name heroku_env
+\end{lstlisting}
+
+\subsection{Экспорт виртуального окружения в \texttt{environment.yml}}
+
+Экспортировать активное виртуальное окружение в yml-файл
+
+\begin{lstlisting}[
+numbers = none
+]
+conda env export > environment.yml
+\end{lstlisting}
 
 
 
