@@ -22,8 +22,15 @@
 
 \tableofcontents
 
+\section{Градиентный бустинг}
 
-\section{Установка пакета \texttt{xgboost} на \texttt{Windows}}
+\subsection{Общие сведения}
+
+\subsection{Особенности реализации в \texttt{sklearn}}
+
+\subsection{Особенности реализации в \texttt{XGBoost}}
+
+\subsubsection{Установка пакета \texttt{xgboost} на \texttt{Windows}}
 
 Устанавливать пакет \texttt{xgboost} рекомендуется с помощью следующей команды
 
@@ -33,7 +40,7 @@ numbers = none
 conda install -c anaconda py-xgboost 
 \end{lstlisting}
 
-Существует альтернативный способ установки пакета \texttt{xgboost} (разумеется он работает и для других пакетов). Для начала требуется вывести список доступных каналов \ref{fig:xgboost_conda_search}, по которым будет проводиться поиск интересующего пакета (в данном случае пакета \texttt{xgboost}), а затем можно воспользоваться конструкцией
+Существует альтернативный способ установки пакета \texttt{xgboost} (разумеется он работает и для других пакетов). Для начала требуется вывести список доступных каналов (см. \pic{fig:xgboost_conda_search}), по которым будет проводиться поиск интересующего пакета (в данном случае пакета \texttt{xgboost}), а затем можно воспользоваться конструкцией
 
 \begin{lstlisting}[
 numbers = none
@@ -56,6 +63,82 @@ numbers = none
 conda install -c free py-xgboost
 \end{lstlisting}
 
+\subsection{Простой пример работы с \texttt{xgboost} и \texttt{shap}}
+
+Решается задача бинарной классификации. Требуется построить модель, предсказывающую годовой доход заявителя по порогу \$50'000 (то есть больше или меньше \$50'000 зарабатывает заявитель в год). Используется набор данных  UCI Adult income
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import xgboost
+import shap  # для оценки важности признаков вычисляются значения Шепли (Shapley value)
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+
+shap.initjs()
+
+X, y = shap.datasets.adult()
+X_display, y_display = shap.datasets.adult(display=True)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=7)
+d_train = xgboost.DMatrix(X_train, label=y_train)
+d_test = xgboost.DMatrix(X_test, label=y_test)
+
+params = {
+    'eta' : 0.01,
+    'objective' : 'binary:logistic',
+    'subsample' : 0.5,
+    'base_score' : np.mean(y_train),
+    'eval_metric' : 'logloss'        
+}
+model = xgboost.train(params, d_train,
+                      num_boost_round = 5000,  # число итераций бустинга
+                      evals = [(d_test, 'test')],
+                      verbose_eval=100,  # выводит результат на каждой 100-ой итерации бустинга
+                      early_stopping_rounds=20)
+
+xgboost.plot_importance(model)
+\end{lstlisting}
+
+На \pic{fig:xgboost_plot}, \pic{fig:xgboost_plot_cover} и \pic{fig:xgboost_plot_gain} изображены графики важности признаков.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.75]{figures/xgboost.plot.pdf}
+	\caption{График важности признаков \lstinline{xgboost.plot_importance(model)},\\построенный с помощью пакета \texttt{xgboost} }\label{fig:xgboost_plot}
+\end{figure}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.75]{figures/xgboost.plot.cover.pdf}
+	\caption{График важности признаков \lstinline{xgboost.plot_importance(model, importance_type='cover')},\\построенный с помощью пакета \texttt{xgboost} }\label{fig:xgboost_plot_cover}
+\end{figure}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.75]{figures/xgboost.plot.gain.pdf}
+	\caption{График важности признаков \lstinline{xgboost.plot_importance(model, importance_type='gain')},\\построенный с помощью пакета \texttt{xgboost} }\label{fig:xgboost_plot_gain}
+\end{figure}
+
+Следует иметь в виду, что в библиотеке \texttt{xgboost} поддерживается три варианта вычисления важности признаков (см.~\href{https://towardsdatascience.com/interpretable-machine-learning-with-xgboost-9ec80d148d27}{Interpretable Machine Learning with XGBoost}):
+
+\begin{itemize}
+	\item \texttt{weight}: общее число сценариев по всем деревьям, когда $i$-ый признак используется для расщепления обучающего набора данных,
+	
+	\item \texttt{cover}: общее число сценариев по всем деревьям, когда $i$-ый признак используется для расщепления набора данных, взвешенное по числу точек обучающего набора данных, которые проходят через эти расщепления,
+	
+	\item \texttt{gain}: среднее снижение потерь на обучающем наборе данных, полученное при использовании $i$-ого признака.
+\end{itemize}
+
+
+\subsection{Особенности реализации в \texttt{LightGBM}}
+
+\subsection{Особенности реализации в \texttt{CatBoost}}
+
+\section{Приемы интерпретации моделей машинного обучения}
+
 \section{Области видимости в языке \texttt{Python}}
 
 Когда мы говорим о поиске значения имени применительно к программному коду, под термином \emph{область видимости} подразумевается \emph{пространство имен} -- то есть место в программном коде, где имени было присвоено значение \cite{lutz:learningpython-2011}.
@@ -70,7 +153,7 @@ conda install -c free py-xgboost
 
 По умолчанию операция присваивания создает локальные имена (это поведение можно изменить с помощью \texttt{global} или \texttt{local}).
 
-Схема разрешения имен в языке \texttt{Python} иногда называется \emph{правилом LEGB}\footnote{Local, Enclosing, Global, Built-in} \cite[стр.~477]{lutz:learningpython-2011}:
+Схема разрешения имен в языке \texttt{Python} иногда называется \emph{правилом LEGB}\footnote{Local, Enclosing, Global, Built-in} \cite[\strbook{477}]{lutz:learningpython-2011}:
 
 \begin{itemize}
 	\item Когда внутри функции выполняется обращение к неизвестному имени, интерпретатор пытается отыскать его в четырех областях видимости -- в \emph{локальной}, затем в \emph{локальной области любой объемлющей функции} или в выражении \texttt{lambda}, затем в \emph{глобальной} и, наконец, во \emph{встроенной}. Поиск завершается, как только будет найдено первое подходящее имя.
@@ -142,9 +225,9 @@ def foo():
 	Когда интерпретатор, сканируя определение функции \texttt{def}, натыкается на строку \texttt{i = i + 1}, он заключает что переменная \texttt{i} является \emph{локальной}, так как ей присваивается какое-то значение в теле функции. А когда функция вызывается на выполнение и интерпретатор снова доходит до строки \texttt{i = i + 1} выясняется, что переменная \texttt{i}, стоящая в правой части, не имет ссылок на какой-либо объект и потому возбуждается исключение \texttt{UnboundLocalError}
 }
 
-\section{Замыкания/фабричные функции}
+\section{Замыкания/фабричные функции в \texttt{Python}}
 
-Под термином \emph{замыкание} или \emph{фабричная функция} подразумевается объект функции, который сохраняет значения в \emph{объемлющих областях видимости}, даже когда эти области могут прекратить свое существование \cite[стр.~488]{lutz:learningpython-2011}.
+Под термином \emph{замыкание} или \emph{фабричная функция} подразумевается объект функции, который сохраняет значения в \emph{объемлющих областях видимости}, даже когда эти области могут прекратить свое существование \cite[\strbook{488}]{lutz:learningpython-2011}.
 
 Замыкания и вложенные функции особенно удобны, когда требуется реализовать концепцию отложенных вычислений \cite{beazley:python-2010}.
 
@@ -183,11 +266,11 @@ numbers = none
 \end{lstlisting}
 будет вызвана вложенная функция, с именем \texttt{action} внутри функции \texttt{maker}. Самое необычное здесь то, что вложенная функция продолжает хранить число 2, значение переменной \texttt{N} в функции \texttt{maker} даже при том, что к моменту вызова функции \texttt{action} функция \texttt{maker} уже \emph{завершила свою работу и вернула управление}.
 
-Когда функция используется как вложенная, в замыкание включается все ее окружение, необходимое для работы внутренней функции \cite[стр.~137]{beazley:python-2010}.
+Когда функция используется как вложенная, в замыкание включается все ее окружение, необходимое для работы внутренней функции \cite[\strbook{137}]{beazley:python-2010}.
 
 \subsection{Области видимости и значения по умолчанию применительно к переменным цикла}
 
-Существует одна известная особенность для функций или lambda-выражений: если lambda-выражение или инструкция \texttt{def} вложены в цикл внутри другой функции и вложенная функция ссылается на переменную из объемлющей области видимости, которая изменяется в цикле, все функции, созданные в этом цикле, будут иметь одно и то же значение -- значение, которое имела переменная на последней итерации \cite[стр.~492]{lutz:learningpython-2011}.
+Существует одна известная особенность для функций или lambda-выражений: если lambda-выражение или инструкция \texttt{def} вложены в цикл внутри другой функции и вложенная функция ссылается на переменную из объемлющей области видимости, которая изменяется в цикле, все функции, созданные в этом цикле, будут иметь одно и то же значение -- значение, которое имела переменная на последней итерации \cite[\strbook{492}]{lutz:learningpython-2011}.
 
 Например, ниже предпринята попытка создать список функций, каждая из которых запоминает текущее значение переменной \texttt{i} из объемлющей области видимости
 
@@ -219,6 +302,7 @@ print(acts[3](2))  # вернет 4**2, последнее значение i
 \begin{lstlisting}[
 title = {\sffamily Правильная реализация},
 style = ironpython,
+emph = {makeActions},
 numbers = none
 ]
 def makeActions():
@@ -233,6 +317,10 @@ acts = makeActions()
 print(acts[0](2))  # вернет 0**2
 print(acts[2](2))  # вернет 2**2
 \end{lstlisting}
+
+\quinta{%
+Значения аргументов по умолчанию вложенных функций, динамически создаваемых в цикле на уровне области видимости объемлющей функции, вычисляются в момент \emph{создания} этих вложенных функций, а не в момент их вызова, поэтому \texttt{lambda x, i=i: ...} работает корректно
+}
 
 
 \section{Калибровка классификаторов}
@@ -534,6 +622,96 @@ conda env remove --name heroku_env
 numbers = none
 ]
 conda env export > environment.yml
+\end{lstlisting}
+
+\section{Приемы работы с пакетом \texttt{Vowpal Wabbit}}
+
+\section{Приемы работы с библиотекой \texttt{pandas}}
+
+\subsection{Число уникальных значений категориальных признаков в объекте \texttt{DataFrame}}
+
+Для того чтобы вывести информацию по числу уникальных значений в каждом категориальном признаке некоторого объекта \texttt{pandas.DataFrame} можно воспользоваться конструкцией
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+X.select_dtypes('category').apply(lambda col: col.unique().shape[0])
+\end{lstlisting}
+
+\subsection{Число пропущенных значений в объекте \texttt{DataFrame}}
+
+Информацию по числу пропущенных значений в каждом столбце можно вывести следующим образом
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+X.isna().any(axis=0)
+\end{lstlisting}
+
+
+\section{Интерпретация моделей и оценка важности признаков с библиотекой \texttt{SHAP}}
+
+\subsection{Общие сведения о значениях Шепли}
+
+В библиотеке \texttt{SHAP} \url{https://github.com/slundberg/shap} для оценки \emph{важности признаков} используются \emph{значения Шепли} (Shapley value) \url{https://en.wikipedia.org/wiki/Shapley_value}.
+
+Формула для вычисления значения Шепли $i$-ого признака имеет вид (здесь сумма распространяется на все подмножества $ S $ из множества признаков $ N $, не содержащие $ i $-ого признака)
+\begin{align*}
+\phi_i(v) = \sum_{S \subseteq N\setminus\{i\}} \dfrac{|S|!(n - |S| - 1)!}{n!}\Bigl( v(S \cup \{i\}) - v(S) \Bigr),
+\end{align*}
+где $ n $ -- общее число признаков; $ v(S \cup \{i\}) $ -- прогноз модели с учетом $ i $-ого признака; $ v(S) $ -- прогноз модели без $ i $-ого признака; $ S $ -- произвольный набор признаков без $ i $-ого признака.
+
+Значение Шепли для $ i $-ого признака вычисляется для каждой точки данных (например, для каждого клиента в выборке) на всех возможных комбинациях признаков (в том числе и для пустых множеств $ S $). Затем полученные оценки суммируются по модулю, что в итоге дает важность $ i $-ого признака.
+
+Библиотека \texttt{SHAP} позволяет интерпретировать и модель в целом, и результаты отдельных примеров \url{https://habr.com/ru/company/homecredit/blog/479712/}.
+
+
+\subsection{Перестановочная важность признаков в библиотеке \texttt{eli5}}
+
+
+Еще важность признаков можно оценивать с помощью так называемой \emph{перестановочной важности} (permutation importances) \url{https://www.kaggle.com/dansbecker/permutation-importance}.
+
+Идея проста: нужно в заранее отведенном для исследования важности признаков наборе данных (валидационном наборе) перетасовать значения признака, влияние которого изучается на данной итерации, оставив остальные признаки (столбцы) и целевой вектор без изменения.
+
+Признак считается <<важным>>, если метрики качества модели падают, и соответственно -- <<неважным>>, если перестановка не влияет на значения метрик.
+
+\remark{
+Перестановочная важность вычисляется после того как модель будет обучена
+}
+
+Рассмотрим задачу построения регрессионной модели на наборе данных \texttt{load\_boston}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import eli5
+import pandas as pd
+from eli5.sklearn import PermutationImportance
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.datasets import load_boston
+from pandas import DataFrame, Series
+
+boston = load_boston()
+
+X_train, X_test, y_train, y_test = train_test_split(boston['data'],
+                                                    boston['target'], 
+                                                    random_state=2)
+
+X_train_sub, X_valid, y_train_sub, y_valid = train_test_split(X_train,
+                                                              y_train,
+                                                              random_state=0)
+
+# модель случайного леса, как обычно, обучается на обучающей выборке
+rf = RandomForestRegressor(n_estimators=500).fit(X_train_sub, y_train_sub)
+
+# модель перестановочной важности обучается на валидационном наборе данных
+perm = PermutationImportance(rf, random_state=42).fit(X_valid, y_valid)
+
+eli5.show_weights(perm, feature_names = boston['feature_names'])  # визуализирует перестановочные важности признаков
 \end{lstlisting}
 
 
