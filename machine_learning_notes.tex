@@ -657,28 +657,170 @@ X.isna().any(axis=0)
 
 В библиотеке \texttt{SHAP} \url{https://github.com/slundberg/shap} для оценки \emph{важности признаков} используются \emph{значения Шепли} (Shapley value) \url{https://en.wikipedia.org/wiki/Shapley_value}.
 
-Формула для вычисления значения Шепли $i$-ого признака имеет вид (здесь сумма распространяется на все подмножества $ S $ из множества признаков $ N $, не содержащие $ i $-ого признака)
+Или несколько точнее: при построении \emph{локальной} интерпретации (то есть интерпретации на конкретной точке данных) значения Шепли, строго говоря, оценивают \emph{силу влияния} $ i $-ого признака $ f_i $ на значения целевого вектора $ y $, а вот \emph{важность признака} в контексте модели можно оценить при построении \emph{глобальной} интерпретации с помощью значений Шепли, взятых по абсолютной величине и усредненных по имеющемуся набору данных. 
+
+Значения Шепли $i$-ого признака на \emph{конкретном объекте} (на текущей точке данных) вычисляются следующим образом (здесь сумма распространяется на все подмножества признаков $ S $ из множества признаков $ N $, не содержащие $ i $-ого признака)
 \begin{align*}
 \phi_i(v) = \sum_{S \subseteq N\setminus\{i\}} \dfrac{|S|!(n - |S| - 1)!}{n!}\Bigl( v(S \cup \{i\}) - v(S) \Bigr),
 \end{align*}
-где $ n $ -- общее число признаков; $ v(S \cup \{i\}) $ -- прогноз модели с учетом $ i $-ого признака; $ v(S) $ -- прогноз модели без $ i $-ого признака; $ S $ -- произвольный набор признаков без $ i $-ого признака.
+где $ n $ -- общее число признаков; $ v(S \cup \{i\}) $ -- прогноз модели с учетом $ i $-ого признака; $ v(S) $ -- прогноз модели без $ i $-ого признака.
 
-Значение Шепли для $ i $-ого признака вычисляется для каждой точки данных (например, для каждого клиента в выборке) на всех возможных комбинациях признаков (в том числе и для пустых множеств $ S $). Затем полученные оценки суммируются по модулю, что в итоге дает важность $ i $-ого признака.
+Значение Шепли для $ i $-ого признака вычисляется для каждой точки данных (например, для каждого клиента в выборке) на всех возможных комбинациях признаков (в том числе и для пустых подмножеств $ S $).
 
-Библиотека \texttt{SHAP} позволяет интерпретировать и модель в целом, и результаты отдельных примеров \url{https://habr.com/ru/company/homecredit/blog/479712/}.
+\remark{
+Метод анализа важности признаков, реализованный в библиотеке \texttt{SHAP}, является и \emph{согласованным}, и \emph{точным} (см. \href{https://towardsdatascience.com/interpretable-machine-learning-with-xgboost-9ec80d148d27}{Interpretable Machine Learning with XGBoost})
+}
+
+\subsection{Пример построения локальной и глобальной интерпретаций }
+
+Решается задача регрессии для классического набора данных \texttt{boston}. Требуется предсказать стоимость квартиры. 
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import shap
+import os
+import pandas as pd
+import numpy as np
+from pandas import DataFrame, Series
+import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.datasets import load_boston
+#%matplotlib inline  # если код оформляется в JupyterLab
+#shap.initjs()  # если код оформляется в JupyterLab
+
+boston = load_boston()
+X, y = boston['data'], boston['target']  # numpy-массивы
+
+# объекты pandas
+X_full = DataFrame(X, columns=boston['feature_names'])
+y_full = Series(y, name = 'PRICE')
+
+X_train, X_test, y_train, y_test = train_test_split(X_full, y_full, random_state=42)
+
+rf = RandomForestRegressor(n_estimators=500).fit(X_train, y_train)
+
+explainer = shap.TreeExplainer(rf)  # <- NB
+shap_values_train = explainer.shap_values(X_train)  # <- NB
+\end{lstlisting}
+
+\subsubsection{Локальная интерпретация отдельной точки данных обучающего набора}
+
+Теперь можно построить локальную интерпретацию для одной точки данных из обучающего набора (см. \pic{fig:shap_force_plt_train})
+
+\begin{lstlisting}[
+style = ironpython,
+title = {\sffamily К вопросу о локальной интерпретации отдельной точки данных обучающего набора},
+numbers = none
+]
+row = 1
+shap.force_plot(
+    explainer.expected_value,  # ожидаемое значение
+    shap_values_train[row, :],  # 2-ая строка в матрице значений Шепли
+    X_train.iloc[row, :]  # 2-ая строка в обучающем наборе данных
+)
+\end{lstlisting}
+
+Можно считать, что \texttt{explainer.expected\_value} это значение, полученное усреднением целевого вектора по точкам обучающего набора данных, т.е. \texttt{y\_train.mean()}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.80]{figures/shap_force_plt_train.png}
+	\caption{ Локальная интерпретация для одной точки данных обучающего набора }\label{fig:shap_force_plt_train}
+\end{figure}
+
+Еще можно построить график частичной зависимости (\pic{fig:shap_dependence_plt_train})
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+shap.dependence_plot('LSTAT', shap_values, X_train)
+\end{lstlisting}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.85]{figures/shap_dependence_plt_train.png}
+	\caption{ График частичной зависимости признака \texttt{LSTAT} от значений Шепли\\с учетом влияния признака \texttt{CRIM} }\label{fig:shap_dependence_plt_train}
+\end{figure}
+
+\subsubsection{Локальная интерпретация отдельной точки данных тестового набора}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+X_test_for_pred = X_test.copy()
+X_test_for_pred['predict'] = np.round(rf.predict(X_test), 2)
+
+explainer = shap.TreeExplainer(rf)
+shap_values_test = explainer.shap_values(X_test_for_pred)
+\end{lstlisting}
+
+Теперь можно построить локальную интерпретацию для отдельной точки данных тестового набора (\pic{fig:shap_dependence_plt_test})
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.7]{figures/shap_dependence_plt_test.png}
+	\caption{ Локальная интерпретация для одной точки данных тестового набора }\label{fig:shap_dependence_plt_test}
+\end{figure}
+
+Из \pic{fig:shap_dependence_plt_test} видно, что признаки с различной <<силой>>\footnote{Ширина полосы}, которая определяется значениями Шепли, смещают предсказание модели на данной точке. Например, признак \texttt{LSTAT} (процент населения с низким социальным статусом) в значительной степени \emph{повышает}\footnote{Потому что значение этого признака невелико; чем меньше процент населения с низким социальным статусом проживает в округе, тем выше стоимость квартиры} стоимость квартиры на \underline{данной точке} по отношению к базовому значению \texttt{base\_value}, а признак \texttt{RM} (среднее число комнат в жилом помещении) в значительной степени снижает.
+
+\begin{lstlisting}[
+style = ironpython,
+title = {\sffamily К вопросу о локальной интерпретации отдельной точки данных тестового набора},
+numbers = none
+]
+row = 3
+shap.force_plot(
+    explainer.expected_value,  # 22.879814248021106
+    #y_train.mean()  # 22.907915567282323
+    shap_values_test[row, :],
+    X_test_for_pred.iloc[row, :]
+)
+\end{lstlisting}
+
+Удобно работать с диаграммой рассеяния \texttt{shap.summary\_plot} (\pic{fig:summary_plt_test}), на которой изображаются признаки в порядке убывания их важности, с одновременным указанием того, насколько сильно каждый из признаков влияет на целевую переменную.
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+shap.summary_plot(shap_values_test, X_test_for_pred)
+\end{lstlisting}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.85]{figures/summary_plt_test.png}
+	\caption{ Диаграмма рассеяния для точек тестового набора данных }\label{fig:summary_plt_test}
+\end{figure}
+
+Какие выводы можно сделать из \pic{fig:summary_plt_test}:
+
+\begin{itemize}
+	\item Признаки \texttt{LSTAT}, \texttt{RM} и \texttt{CRIM} имеют высокую важность для модели в целом,
+	
+	\item Для признака \texttt{LSTAT} наблюдается отрицательная статистическая зависимость от целевой переменной, т.е. низкие значения этого признака отвечают высоким значениям целевой переменной (стоимости на квартиру),
+	
+	\item Для признака \texttt{RM} наблюдается положительная статистическая зависимость от целевой переменной: чем больше комнат в жилом помещении, тем выше стоимость квартиры.
+\end{itemize}
 
 
-\subsection{Перестановочная важность признаков в библиотеке \texttt{eli5}}
+
+\section{Перестановочная важность признаков в библиотеке \texttt{eli5}}
 
 
 Еще важность признаков можно оценивать с помощью так называемой \emph{перестановочной важности} (permutation importances) \url{https://www.kaggle.com/dansbecker/permutation-importance}.
 
 Идея проста: нужно в заранее отведенном для исследования важности признаков наборе данных (валидационном наборе) перетасовать значения признака, влияние которого изучается на данной итерации, оставив остальные признаки (столбцы) и целевой вектор без изменения.
 
-Признак считается <<важным>>, если метрики качества модели падают, и соответственно -- <<неважным>>, если перестановка не влияет на значения метрик.
+Признак считается <<важным>>, если метрики качества модели падают, и соответственно -- <<неважным>>, если перестановка не влияет на значения метрик. Перестановочная важность вычисляется после того как модель будет обучена.
 
 \remark{
-Перестановочная важность вычисляется после того как модель будет обучена
+Перестановочная важность обладает свойством \emph{согласованности}, но не обладает свойством \emph{точности} \href{https://towardsdatascience.com/interpretable-machine-learning-with-xgboost-9ec80d148d27}{Interpretable Machine Learning with XGBoost}
 }
 
 Рассмотрим задачу построения регрессионной модели на наборе данных \texttt{load\_boston}
