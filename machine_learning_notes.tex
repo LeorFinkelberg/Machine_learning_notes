@@ -9,7 +9,7 @@
 
 
 \begin{document}
-\title{Машинное обучение и анализ данных. Заметки}
+\title{Заметки по машинному обучению и анализу данных}
 
 \author{\itshape Подвойский А.О.}
 
@@ -26,9 +26,9 @@
 
 \subsection{Общие сведения}
 
-\subsection{Особенности реализации в \texttt{sklearn}}
+\subsection{Особенности реализации в пакете \texttt{sklearn}}
 
-\subsection{Особенности реализации в \texttt{XGBoost}}
+\subsection{Особенности реализации в пакете \texttt{XGBoost}}
 
 \subsubsection{Установка пакета \texttt{xgboost} на \texttt{Windows}}
 
@@ -63,7 +63,7 @@ numbers = none
 conda install -c free py-xgboost
 \end{lstlisting}
 
-\subsection{Простой пример работы с \texttt{xgboost} и \texttt{shap}}
+\subsubsection{Простой пример работы с \texttt{xgboost} и \texttt{shap}}
 
 Решается задача бинарной классификации. Требуется построить модель, предсказывающую годовой доход заявителя по порогу \$50'000 (то есть больше или меньше \$50'000 зарабатывает заявитель в год). Используется набор данных  UCI Adult income
 
@@ -133,9 +133,9 @@ xgboost.plot_importance(model)
 \end{itemize}
 
 
-\subsection{Особенности реализации в \texttt{LightGBM}}
+\subsection{Особенности реализации в пакете \texttt{LightGBM}}
 
-\subsection{Особенности реализации в \texttt{CatBoost}}
+\subsection{Особенности реализации в пакете \texttt{CatBoost}}
 
 \section{Приемы интерпретации моделей машинного обучения}
 
@@ -219,22 +219,165 @@ def foo():
 
 Хотя в этом примере существует глобальная переменная \texttt{i}, она не используется для получения значения. Переменные в функциях могут быть либо \emph{локальными}, либо \emph{глобальными} и не могут произвольно изменять \emph{область видимости} в середине функции.
 
+\remark{
+Оператор \texttt{global} делает локальную переменную в теле функции \emph{глобальной} и говорит интерпретатору чтобы тот не искал переменную в локальной области видимости текущей функции
+}
+
 Например, нельзя считать, что переменная \texttt{i} в выражении \lstinline{i + 1} в предыдущем фрагменте обращается к глобальной переменной \texttt{i}; при этом переменная \texttt{i} в вызове \texttt{print(i)} подразумевает локальную переменную \texttt{i}, созданную в предыдущей инструкции.
 
 \quinta{%
-	Когда интерпретатор, сканируя определение функции \texttt{def}, натыкается на строку \texttt{i = i + 1}, он заключает что переменная \texttt{i} является \emph{локальной}, так как ей присваивается какое-то значение в теле функции. А когда функция вызывается на выполнение и интерпретатор снова доходит до строки \texttt{i = i + 1} выясняется, что переменная \texttt{i}, стоящая в правой части, не имет ссылок на какой-либо объект и потому возбуждается исключение \texttt{UnboundLocalError}
+	Когда интерпретатор, построчно сканируя тело функции \texttt{def}, натыкается на строку \texttt{i = i + 1}, он заключает что переменная \texttt{i} является \emph{локальной}, так как ей присваивается значение именно в теле функции. А когда функция вызывается на выполнение и интерпретатор снова доходит до строки \texttt{i = i + 1}, выясняется, что переменная \texttt{i}, стоящая в правой части, не имет ссылок на какой-либо объект и потому возникает ошибка \texttt{UnboundLocalError}
 }
+
+\section{Декораторы в \texttt{Python}}
+
+\emph{Декораторы} выполняются \emph{сразу после} загрузки или импорта модуля, однако увидеть какие-либо изменения можно только в том случае, если декоратор явно взаимодействует с пользователем на <<верхнем уровне>>\footnote{Если декоратор простой одноуровневый, то под верхним уровнем понимается его локальная область видимости, а если декоратор содержит замыкание, то -- понимается область видимости объемлющей функции}, например, печатает строку в терминале.  \emph{Задекорированные} же { функции} выполняются строго в результате явного вызова \cite[\strbook{217}]{ramalho:python-2016}.
+
+\subsection{Реализация простого декоратора}
+
+Рассмотрим простой декоратор, который хронометритует каждый вызов задекорированной функции и печатает затраченное время
+
+\begin{lstlisting}[
+style = ironpython,
+title = {\sffamily clockdeco.py, плохой пример!},
+emph = {clock, clocked},
+numbers = none
+]
+import time
+
+def clock(func):
+    print('test string from `clock`')  # <- строка будет выведена в терминал
+                                       # сразу после загрузки модуля, который
+                                       # импортирует данный декоратор
+    def clocked(*args):  # замыкание
+        t0 = time.perf_counter()  # запомнить начальный момент времени
+        result = func(*args)  # вызвать функцию
+        elapsed = time.perf_counter() - t0  # вычислить сколько прошло времени
+        name = func.__name__
+        arg_str = ', '.join(repr(arg) for arg in args)
+        print(f'{elapsed}, {name}({arg_str}) -> {result}')
+        return result  # вернуть результат
+return clocked
+\end{lstlisting}
+
+Использование декоратора выглядит так
+
+\begin{lstlisting}[
+label = {lst:deco},
+style = ironpython,
+caption = {\sffamily clockdeco\_demo.py},
+emph = {simple_deco_1, simple_deco_2,
+simple_func_1, simple_func_2, inner, snooze, factorial}
+]
+import time
+from clockdeco import clock
+
+def simple_deco_1(f): 
+    '''
+    Декоратор с замыканием
+    '''
+    def inner():
+        print('test string from `simple_deco_1`')  # <- строка НЕ будет выведена
+                                                   # после загрузке модуля
+    return inner
+
+def simple_deco_2(f):
+    '''
+    Простой одноуровневый декоратор
+    '''
+    print('test string from `simple_deco_2`')  # <- строка будет выведена в терминал
+                                               # сразу после загрузки модуля
+    return f
+
+@simple_deco_1  # simple_func_1 = simple_deco_1(f=simple_func_1) -> inner
+def simple_func_1():
+    print('test string from `simple_func_1`')   
+
+@simple_deco_2  # simple_func_2 = simple_deco_2(f=simple_func_2) -> simple_func_2
+def simple_func_2():
+    print('test string from `simple_func_2`')   
+
+@clock  # snooze = clock(func=snooze) -> clocked
+def snooze(seconds):
+    time.sleep(seconds)
+
+@clock
+def factorial(n):
+    return 1 if n < 2 else n*factorial(n-1)
+
+
+if __name__ == '__main__':
+    print('*'*10, 'Calling snooze(.123)')
+    print('snooze_result = {}'.format(snooze(.123)))
+    print('*'*10, 'Calling factorial(6)')
+    print('6! = ', factorial(6))
+    print(f'This is result from `simple_func_1`: {simple_func_1()}')
+    print(f'This is result from `simple_func_2`: {simple_func_2()}')
+\end{lstlisting}
+
+\begin{lstlisting}[
+title = {\sffamily Вывод clockdeco\_demo.py},
+numbers = none
+]
+test string from `simple_deco_2`
+test string from `clock`
+test string from `clock`
+********** Calling snooze(.123)
+0.1261, snooze(0.123) -> None
+snooze_result = None
+********** Calling factorial(6)
+1.866e-06, factorial(1) -> 1
+7.589e-05, factorial(2) -> 2
+0.0001266, factorial(3) -> 6
+0.0001732, factorial(4) -> 24
+0.0002224, factorial(5) -> 120
+0.0002715, factorial(6) -> 720
+6! =  720
+test string from `simple_deco_1`
+this is result from `simple_func_1`: None
+test string from `simple_func_2`
+this is result from `simple_func_2`: None
+\end{lstlisting}
+
+При разгрузке модуля \texttt{clockdeco\_demo.py} будут выполнены все декораторы, но только декораторы \texttt{simple\_deco\_2} и \texttt{clock} выведут в терминал строки, потому как эти строки расположены на верхнем уровне декораторов (т.е. находятся не внутри вложенных функций). Декоратор \texttt{simple\_deco\_1} ничего не выводит, так как строка находится в области видимости вложенной функции.
+
+Важно отметить следующее: после загрузки модуля, как уже говорилось выше, будут выведены в терминал строки, расположенные на верхнем уровне декораторов, но самое главное заключается в том, что после выполнения декоратора \texttt{clock} объект \texttt{snooze} уже будет ссылаться на внутреннюю функцию \texttt{clocked} декоратора \texttt{clock}, а после выполнения декоратора \texttt{simple\_deco\_1} объект \texttt{simple\_func\_1} будет ссылаться на внутреннюю функцию \texttt{inner}. Что же касается декоратора \texttt{simple\_deco\_2}, то объект \texttt{simple\_func\_2} будет ссылаться на \texttt{simple\_func\_2}.
+
+По этой причине при вызове функции \texttt{simple\_func\_1()} печатается строка из внутренней функции \texttt{inner}, а при вызове функции \texttt{simple\_func\_2()} -- строка из этой же функции.
+
+\subsection{Обобщение по механизму работы декораторов}
+
+Если обобщить сказанное выше, то получается, что задекорированная функция ссылается на ту функцию, которую возвращает декоратор, аргумент которого получил ссылку на данную функцию. И происходит это \emph{сразу после} загрузки или импорта модуля. А затем остается только вызвать задекорированную функцию, которая вообще говоря уже ссылается на какую-то другую функцию, которую возвращает декоратор, т.е. если
+\begin{lstlisting}[
+style = ironpython,
+emph = {deco, inner, target},
+numbers = none
+]
+def deco(f):
+    def inner():  # замыкание
+        print('inner')
+    return inner
+    
+@deco  # выполняется при загрузке/импорте модуля
+def target():
+    print('target')
+\end{lstlisting}
+то
+\lstinline[style = ironpython]{target = deco(f=target) -> inner}\\и, следовательно, \lstinline{target -> inner} (можно считать, что \lstinline{target=inner});\\поэтому при вызове \lstinline{target()} на самом деле вызывается \lstinline{inner()} и будет выведена строка \lstinline[style=ironpython]{'inner'}.
+
+
 
 \section{Замыкания/фабричные функции в \texttt{Python}}
 
 Под термином \emph{замыкание} или \emph{фабричная функция} подразумевается объект функции, который сохраняет значения в \emph{объемлющих областях видимости}, даже когда эти области могут прекратить свое существование \cite[\strbook{488}]{lutz:learningpython-2011}.
+
+В источнике \cite[\strbook{222}]{ramalho:python-2016} приводится несколько отличное определение\footnote{Определение содержит авторские правки}: \emph{замыкание} -- это вложенная функция с расширенной областью видимости, которая охватывает все \emph{неглобальные} переменные, объявленные в области видимости объемлющей функции, и способная работать с этими переменными даже после того как локальная область видимости объемлющей функции будет уничтожена.
 
 Замыкания и вложенные функции особенно удобны, когда требуется реализовать концепцию отложенных вычислений \cite{beazley:python-2010}.
 
 Рассмотрим в качестве примера следующую функцию
 
 \begin{lstlisting}[
-title = {\sffamily Пример замыкания},
 style = ironpython,
 emph = {maker, action},
 numbers = none
@@ -655,15 +798,21 @@ X.isna().any(axis=0)
 
 \subsection{Общие сведения о значениях Шепли}
 
-В библиотеке \texttt{SHAP} \url{https://github.com/slundberg/shap} для оценки \emph{важности признаков} используются \emph{значения Шепли} (Shapley value) \url{https://en.wikipedia.org/wiki/Shapley_value}.
+В библиотеке \texttt{SHAP} \url{https://github.com/slundberg/shap} для оценки \emph{важности признаков} используются \emph{значения Шепли}\footnote{Термин пришел из теории кооперативных игр} (Shapley value) \url{https://en.wikipedia.org/wiki/Shapley_value}.
 
-Или несколько точнее: при построении \emph{локальной} интерпретации (то есть интерпретации на конкретной точке данных) значения Шепли, строго говоря, оценивают \emph{силу влияния} $ i $-ого признака $ f_i $ на значения целевого вектора $ y $, а вот \emph{важность признака} в контексте модели можно оценить при построении \emph{глобальной} интерпретации с помощью значений Шепли, взятых по абсолютной величине и усредненных по имеющемуся набору данных. 
+Или несколько точнее: при построении \emph{локальной} интерпретации (то есть интерпретации на конкретной точке данных) значения Шепли, строго говоря, оценивают \emph{силу влияния}\footnote{Еще эту оценку можно интерпретировать как \emph{вклад}} $ i $-ого признака $ f_i $ на значения целевого вектора $ y $, а вот \emph{важность признака} в контексте модели можно оценить при построении \emph{глобальной} интерпретации с помощью значений Шепли, взятых по абсолютной величине и усредненных по имеющемуся набору данных. 
+
+\remark{
+Значения Шепли объясняют как <<справедливо>> оценить вклад каждого признака в прогноз модели
+}
 
 Значения Шепли $i$-ого признака на \emph{конкретном объекте} (на текущей точке данных) вычисляются следующим образом (здесь сумма распространяется на все подмножества признаков $ S $ из множества признаков $ N $, не содержащие $ i $-ого признака)
 \begin{align*}
-\phi_i(v) = \sum_{S \subseteq N\setminus\{i\}} \dfrac{|S|!(n - |S| - 1)!}{n!}\Bigl( v(S \cup \{i\}) - v(S) \Bigr),
+\phi_i(v) = \sum_{S \subseteq N\setminus\{i\}} \dfrac{|S|!(n - |S| - 1)!}{n!}\Bigl( \underset{f_i-contribution }{\underbrace{ v(S \cup \{i\}) - v(S)}} \Bigr),
 \end{align*}
 где $ n $ -- общее число признаков; $ v(S \cup \{i\}) $ -- прогноз модели с учетом $ i $-ого признака; $ v(S) $ -- прогноз модели без $ i $-ого признака.
+
+Выражение $ v(S \cup \{i\}) - v(S) $ -- это вклад $ i $-ого признака. Если теперь вычислить среднее вкладов по всем возможным перестановкам, то получится <<честная>> оценка вклада $ i $-ого признака.
 
 Значение Шепли для $ i $-ого признака вычисляется для каждой точки данных (например, для каждого клиента в выборке) на всех возможных комбинациях признаков (в том числе и для пустых подмножеств $ S $).
 
@@ -671,7 +820,11 @@ X.isna().any(axis=0)
 Метод анализа важности признаков, реализованный в библиотеке \texttt{SHAP}, является и \emph{согласованным}, и \emph{точным} (см. \href{https://towardsdatascience.com/interpretable-machine-learning-with-xgboost-9ec80d148d27}{Interpretable Machine Learning with XGBoost})
 }
 
-\subsection{Пример построения локальной и глобальной интерпретаций }
+
+
+\subsection{ Пример построения локальной и глобальной интерпретаций }
+
+Примеры использования библиотеки \texttt{SHAP} не только для tree-base моделей можно найти по адресу \url{https://github.com/slundberg/shap/tree/master/notebooks/tree_explainer}.
 
 Решается задача регрессии для классического набора данных \texttt{boston}. Требуется предсказать стоимость квартиры. 
 
@@ -748,6 +901,8 @@ shap.dependence_plot('LSTAT', shap_values, X_train)
 
 \subsubsection{Локальная интерпретация отдельной точки данных тестового набора}
 
+Прежде чем приступить к вычислению значений Шепли, следует создать поверхностную копию тестового набора данных
+
 \begin{lstlisting}[
 style = ironpython,
 numbers = none
@@ -756,12 +911,13 @@ X_test_for_pred = X_test.copy()
 X_test_for_pred['predict'] = np.round(rf.predict(X_test), 2)
 
 explainer = shap.TreeExplainer(rf)
+# вычисляем значения Шепли для тестового набора данных со столбцом 'predict'
 shap_values_test = explainer.shap_values(X_test_for_pred)
 \end{lstlisting}
 
-Теперь можно построить локальную интерпретацию для отдельной точки данных тестового набора (\pic{fig:shap_dependence_plt_test})
+Теперь можно построить локальную интерпретацию для отдельной точки данных тестового набора (\pic{fig:shap_dependence_plt_test}).
 
-\begin{figure}[h]
+\begin{figure}
 	\centering
 	\includegraphics[scale=0.7]{figures/shap_dependence_plt_test.png}
 	\caption{ Локальная интерпретация для одной точки данных тестового набора }\label{fig:shap_dependence_plt_test}
@@ -782,6 +938,8 @@ shap.force_plot(
     X_test_for_pred.iloc[row, :]
 )
 \end{lstlisting}
+
+\subsubsection{Глобальная интерпретация модели на тестовом наборе данных}
 
 Удобно работать с диаграммой рассеяния \texttt{shap.summary\_plot} (\pic{fig:summary_plt_test}), на которой изображаются признаки в порядке убывания их важности, с одновременным указанием того, насколько сильно каждый из признаков влияет на целевую переменную.
 
@@ -808,6 +966,28 @@ shap.summary_plot(shap_values_test, X_test_for_pred)
 	\item Для признака \texttt{RM} наблюдается положительная статистическая зависимость от целевой переменной: чем больше комнат в жилом помещении, тем выше стоимость квартиры.
 \end{itemize}
 
+Затем можно детальнее изучить графики частичной зависимости, построенные на тестовом наборе данных. Рассмотрим зависимость признака \texttt{CRIM} (уровень преступности в городе на душу населения) от значений Шепли, вычисленных для этого признака (\pic{fig:dependeces_plt_test_CRIM}).
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+shap.dependence_plot('CRIM', shap_values_test[:, :-1], X_test_pred.iloc[:, :-1])
+\end{lstlisting}
+
+\begin{figure}[h!]
+	\centering
+	\includegraphics[scale=0.85]{figures/dependeces_plt_test_CRIM.png}
+	\caption{ График частичной зависимости признака \texttt{CRIM} от значений Шепли\\с учетом влияния \texttt{LSTAT} }\label{fig:dependeces_plt_test_CRIM}
+\end{figure}
+
+Какие выводы можно сделать из \pic{fig:dependeces_plt_test_CRIM}:
+
+\begin{itemize}
+	\item Чем выше уровень преступности в городе, тем в большей степени снижается стоимость квартиры,
+	
+	\item Не везде, где проживает высокий процент населения с низким социальным статусом наблюдается высокий уровень преступности, однако в тех местах, где регистрируется высокий уровень преступности одновременно регистрируется и высокий процент населения с низким социальным статусом.
+\end{itemize}
 
 
 \section{Перестановочная важность признаков в библиотеке \texttt{eli5}}
@@ -865,6 +1045,8 @@ eli5.show_weights(perm, feature_names = boston['feature_names'])  # визуал
 	\bibitem{beazley:python-2010}{\emph{Бизли Д.} Python. Подробный справочник. -- Пер. с англ. -- СПб.: Символ-Плюс, 2010. -- 864~с. }
 	
 	\bibitem{chacon:2020}{ \emph{Чакон С.}, \emph{Штрауб Б.} Git для профессионального программиста. -- СПб.: Питер, 2020. -- 496~с. }
+	
+	\bibitem{ramalho:python-2016}{\emph{Рамальо Л.}{ Python. К вершинам мастерства. -- М.: ДМК Пресс, 2016. -- 768 с.}}
 	
 \end{thebibliography}
 
