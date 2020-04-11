@@ -239,7 +239,7 @@ def foo():
 
 \begin{lstlisting}[
 style = ironpython,
-title = {\sffamily clockdeco.py, плохой пример!},
+title = {\sffamily clockdeco.py, не очень удачный пример декоратора},
 emph = {clock, clocked},
 numbers = none
 ]
@@ -265,7 +265,7 @@ return clocked
 \begin{lstlisting}[
 label = {lst:deco},
 style = ironpython,
-caption = {\sffamily clockdeco\_demo.py},
+title = {\sffamily clockdeco\_demo.py},
 emph = {simple_deco_1, simple_deco_2,
 simple_func_1, simple_func_2, inner, snooze, factorial}
 ]
@@ -339,11 +339,332 @@ test string from `simple_func_2`
 this is result from `simple_func_2`: None
 \end{lstlisting}
 
+\remark{
+Приведенный выше пример декоратора \texttt{clock} из модуля \texttt{clockdeco.py} не удачен в том смысле, что если нам, например, потребуется вывести значение атрибута \texttt{\_\_name\_\_} задекорированной функции \texttt{snooze}, т.е. \texttt{snooze.\_\_name\_\_}, то будет возвращена строка \texttt{'clocked'}, а не \texttt{'snooze'}.
+
+Чтобы декоратор <<не портил>> значения атрибута \texttt{\_\_name\_\_}, следует задекорировать замыкание декоратора с помощью \texttt{@functools.wraps(func)}
+}
+
+
 При разгрузке модуля \texttt{clockdeco\_demo.py} будут выполнены все декораторы, но только декораторы \texttt{simple\_deco\_2} и \texttt{clock} выведут в терминал строки, потому как эти строки расположены на верхнем уровне декораторов (т.е. находятся не внутри вложенных функций). Декоратор \texttt{simple\_deco\_1} ничего не выводит, так как строка находится в области видимости вложенной функции.
 
 Важно отметить следующее: после загрузки модуля, как уже говорилось выше, будут выведены в терминал строки, расположенные на верхнем уровне декораторов, но самое главное заключается в том, что после выполнения декоратора \texttt{clock} объект \texttt{snooze} уже будет ссылаться на внутреннюю функцию \texttt{clocked} декоратора \texttt{clock}, а после выполнения декоратора \texttt{simple\_deco\_1} объект \texttt{simple\_func\_1} будет ссылаться на внутреннюю функцию \texttt{inner}. Что же касается декоратора \texttt{simple\_deco\_2}, то объект \texttt{simple\_func\_2} будет ссылаться на \texttt{simple\_func\_2}.
 
 По этой причине при вызове функции \texttt{simple\_func\_1()} печатается строка из внутренней функции \texttt{inner}, а при вызове функции \texttt{simple\_func\_2()} -- строка из этой же функции.
+
+Еще один пример декоратора с замыканием
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {deco, inner, target},
+numbers = none
+]
+def deco(f):
+    def inner(*args, **kwargs):
+        print(f'from `deco-inner`: args={args}, kwargs={kwargs}')
+        return f  # f - свободная переменная
+    return inner
+
+@deco  # target = deco(f=target) -> inner :: target -> inner :: target=inner
+def target(a, b=10):
+    return (f'from `target`: a={a}, b={b}')
+
+print(target(20, b=500)(250))  # сначала вызывается inner(20, b=500), а потом target(250)
+\end{lstlisting}
+
+Выведет
+
+\begin{lstlisting}[
+numbers = none
+]
+from `deco-inner`: args=(20,), kwargs={'b': 500}
+from `target`: a=250, b=10
+\end{lstlisting}
+
+\subsection{Кэширование с помощью \texttt{functools.lru\_cache}}
+
+Декоратор \texttt{functools.lru\_cache} очень полезен на практике. Он реализует запоминание: прием оптимизации, смысл которого заключается в сохранении результатов предыдущих дорогостоящих вызовов функции, что позволяет избежать повторного вычисления с теми же аргументами, что и раньше \cite[\strbook{230}]{ramalho:python-2016}.
+
+Например
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {fibonacci},
+numbers = none
+]
+import functools
+from clockdeco import clock
+
+@functools.lru_cache
+@clock
+def fibonacci(n):
+    if n < 2:
+        return n
+    return fibonacci(n-2) + fibonacci(n-1)
+    
+if __name__ == '__main__':
+    print(fibonacci(6))
+\end{lstlisting}
+
+\remark{
+\texttt{lru\_cache} хранит результаты в словаре, ключи которого составлены из позиционных и именованных аргументов вызовов, а это значит, что все аргументы, принимаемые декорируемой функции должны быть \emph{хешируемыми}
+}
+
+\subsection{Одиночная диспетчеризация и обобщенные функции}
+
+Декоратор \texttt{functools.singledispatch} позволяет каждому модулю вносить свой вклад в общее решение. Обычная функция, декорированная \texttt{@singledispatch} становится \emph{обобщенной функцией}: групповой функцией, выполняющей одну и ту же логическую операцию по-разному в зависимости от типа первого аргумента \cite[\strbook{234}]{ramalho:python-2016}. Именно это и называется \emph{одиночной диспетчеризацией}. Если бы для выбора конкретных функций использовалось больше аргументов, то мы имели бы дело с \emph{множественной диспетчеризацией}.
+
+Например
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {htmlize},
+numbers = none
+]
+from functools import singledispatch
+from collections import abc
+import numbers
+import html
+
+@singledispatch  # делает функцию обобщенной
+def htmlize(obj):
+    content = html.escape(repr(obj))
+    return '<pre>{}</pre>'.format(content)
+    
+    
+@htmlize.register(str)  # будет вызываться для объектов строкового типа данных
+def _(text):
+    content = html.escape(text).replace('\n', '<br>\n')
+    return '<p>{}</p>'.format(content)
+    
+    
+@htmlize.register(numbers.Integral)  # будет вызваться для объектов целочисленного типа данных
+def _(n):
+    return '<pre>{} (0x{:x})</pre>'.format(n)
+    
+    
+@htmlize.register(tuple)
+@htmlize.register(abc.MutableSequence)
+def _(seq):
+    inner = '</li>\n<li>'.join(htmlize(item) for item in seq)
+    return '<ul>\n<li>' + inner + '</li>\n</ul>'
+\end{lstlisting}
+
+\remark{
+По возможности следует стараться регистрировать специализированные функции для обработки абстрактных базовых классов, например, \texttt{numbers.Integral} или \texttt{abc.MutableSequence}, а не конкретные реализации типа \texttt{int} или \texttt{list}
+}
+
+Замечательное свойство механизма \texttt{singledispatch} состоит в том, что специализированные функции можно зарегистрировать в любом месте системы, в любом модуле \cite{ramalho:python-2016}.
+
+\subsection{Композиции декораторов}
+
+Когда два декоратора \texttt{@d1} и \texttt{@d2} применяются к одной и той же функции \texttt{f} в указанном порядке, получается то же самое, что в результате композиции \texttt{f = d1(d2(f))}.
+
+Иными словами
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {f},
+numbers = none
+]
+@d1
+@d2
+def f():
+    print('f')
+\end{lstlisting}
+эквивалентен следующему
+\begin{lstlisting}[
+style = ironpython,
+emph = {f},
+numbers = none
+]
+def f():
+    print('f')
+    
+f = d1(d2(f))
+\end{lstlisting}
+
+Рассмотрим еще один пример композиции декораторов
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {deco1, deco2, target, inner1, inner2},
+numbers = none
+]
+def deco1(f):  # выполняется вторым
+    print('deco-1')  # # будет выведена в терминал
+    def inner1():
+        print('string from `deco1-inner`')
+    return inner1
+
+def deco2(f):  # выполняется первым
+    print('deco-2')  # будет выведена в терминал
+    def inner2():
+        print('string from `deco2-inner')
+    return inner2
+
+@deco1  # 2) inner2 = deco1(f=inner2) -> inner1 :: inner2 -> inner1 :: inner2 = inner1
+@deco2  # 1) target = deco2(f=target) -> inner2 :: target -> inner2 :: target = inner2
+def target():  # 3) target -> inner1
+    print('string from `target`')
+
+
+if __name__ == '__main__':
+    target()  # выведет string from `deco1-inner`
+\end{lstlisting}
+
+Выведет
+
+\begin{lstlisting}[
+numbers = none
+]
+deco-2
+deco-1
+string from `deco1-inner`
+\end{lstlisting}
+
+\remark{
+Первым выполняется тот декоратор, который ближе расположен к декорируемой функции
+}
+
+
+То есть при загрузке или импорте модуля будут выполнены декораторы \texttt{deco1} и \texttt{deco2}: сначала \texttt{deco2}, а затем \texttt{deco1}, потому как \texttt{deco2} ближе к декорируемой функции. Декоратор \texttt{deco1} применяется к той функции, которую возвращает \texttt{deco2}.
+
+\subsection{Параметризованные декораторы}
+
+Параметризованные декораторы часто называют \emph{фабриками декораторов}. Фабрики декораторов возвращают настоящие декораторы, которые применяются к декорируемой функции.
+
+Пример
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {register, decorate, f1, f2, f3},
+numbers = none
+]
+registry = set()
+
+def register(activate=True):  # фабрика декораторов
+    def decorate(func):  # декоратор
+        print(f'running register(activate={activate})->decorate({func})')
+        if activate:
+            registry.add(func)
+        else:
+            registry.discard(func)
+        return func
+    return decorate
+
+@register(activate=False)  # f1 = decorate(func=f1) -> f1 :: f1 -> f1
+def f1():
+    print('running f1()')
+
+@register()  # f2 = decorate(func=f2) -> f2 :: f2 -> f2
+def f2():
+    print('running f2()')
+
+def f3():
+print('running f3()')
+\end{lstlisting}
+
+Идея в том, что функция \texttt{register()} возвращает декоратор \texttt{decorate}, который затем применяется к декорируемой функции \cite{ramalho:python-2016}. 
+
+\remark{
+\emph{Фабрика декораторов} возвращает \emph{декоратор}, который применяется к декорируемой функции
+}
+
+Чуть подробнее: сразу после загрузки или импорта модуля выполняется фабрика декораторов \texttt{register}, которая возвращает декоратор \texttt{decorate}, который и применяется к функциям. Можно представлять, что фабрика декораторов нужна только для того, чтобы собрать значения каких-то дополнительных переменных, которые потребуются позже. В данном примере можно представить, что строка \texttt{@register()} заменяется на строку \texttt{@decorate}. То есть декоратор применяется к функции, расположенной на следующей строке, и работает как обычно.
+
+Как можно работать с этой фабрикой декораторов
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+register()(f3)  # добавить ссылку на функцию f3 во множенство registry
+register(activate=False)(f2)  # удалить ссылку на функцию f2
+\end{lstlisting}
+
+Конструкция \texttt{register()} возвращает декоратор, который затем применяется к переменной (например, к \texttt{f3}), ассоциированной с декорируемой функцией, и работает так, как если бы изначально был только он (без фабрики декораторов) \cite{ramalho:python-2016}.
+
+Если бы у декоратора был еще один уровень вложенности, т.е. было бы определено еще и замыкание, то это изменило бы только ссылку на функцию, которую возвращает замыкание
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {fabricdeco, deco, inner, target},
+numbers = none
+]
+def fabricdeco():  # фабрика декораторов
+    def deco(f):  # декоратор
+        def inner():  # замыкание
+            print(f'from inner: {f}')
+        return inner
+    return deco
+    
+@fabicdeco()  # target = deco(f=target) -> inner :: target -> inner :: target=inner
+def target():
+    print('from target')
+    
+target()  # на самом деле вызывается inner() -> from inner: <function target at 0x0...08B05318>
+\end{lstlisting}
+
+Рассмотрим еще один пример параметризованного декоратора
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {clock, clocked, decorate, snooze},
+numbers = none
+]
+import time
+
+DEFAULT_FMT = '[{elapsed}s] {name}({args}) -> {result}'
+
+def clock(fmt=DEFAULT_FMT):  # фабрика декораторов
+    def decorate(func):  # декоратор
+        count = 0
+        def clocked(*_args):  # замыкание
+            nonlocal count  # делает переменную свободной
+            count += 1
+            print(f'args-{count}: {_args}')
+            t0 = time.time()
+            _result = func(*_args)
+            elapsed = time.time() - t0
+            name = func.__name__
+            args = ', '.join(repr(arg) for arg in _args)
+            result = repr(_result)
+            print(fmt.format(**locals())) # использование **locals() позволяет ссылаться
+                                          # на любую локальную переменную clocked
+            return _result
+        return clocked
+    return decorate
+
+
+if __name__ == '__main__':
+    @clock()  # snooze = decorate(func=snooze) -> clocked :: snooze -> clocked
+    def snooze(seconds):
+        time.sleep(seconds)
+
+    for i in range(3):
+        snooze(0.123)
+\end{lstlisting}
+
+Теперь фабрику декораторов можно вызывать, например, так:
+\begin{lstlisting}[
+style = ironpython,
+emph = {snooze},
+numbers = none
+]
+@clock('log::{name}({args}), dt={elapsed:.5g}s')
+def snooze(seconds):
+    time.sleep(seconds)
+\end{lstlisting}
+
+Объяснение: сразу после загрузки модуля (когда модуль загружается как скрипт), интерпретатор наталкивается на строку \texttt{@clock()} после чего вызывает \emph{фабрику декораторов} \texttt{clock}, которая возвращает ссылку на \emph{декоратор} \texttt{decorate}, который в свою очередь начинает работать как и в описанных выше случаях, т.е. аргумент \texttt{func} декоратора получает ссылку на \texttt{snooze}, а сам декоратор возвращает ссылку на \emph{замыкание} \texttt{clocked}.
+
+\remark{
+Интерпретатор вызывает декоратор или фабрику декораторов из той строки, в которой находится конструкция \texttt{@deco}, поэтому как в данном примере если \texttt{@clock()} разместить в блоке проверки значения атрибута \texttt{\_\_name\_\_}, то фабрика декораторов не будет вызвана
+}
+
+Однако здесь есть любопытный момент. Переменные \texttt{func} и \texttt{count} вообще говоря являются \emph{свободными переменными}, поэтому их значения можно читать из-под замыкания (находясь в области видимости замыкания) даже после того, как локальная область видимости объемлющей функции (декоратора) будет уничтожена. Но если попытаться передать новое значение переменной \texttt{count}, находясь в теле замыкания \emph{без} использования оператора \texttt{nonlocal}, то это приведет к ошибке \texttt{UnboundLocalError}. Дело в том что свободные переменные по умолчанию можно только читать из-под замыкания. Когда мы присваиваем новое значение переменной \texttt{count} в теле замыкания, то мы делаем эту переменную локальной для замыкания \texttt{clocked}, переменная \texttt{count} перестает быть свободной. Чтобы объяснить интерпретатору, что переменная \texttt{count} должна рассматриваться как свободная даже если ей присваивается значение в области видимости замыкания, следует использовать оператор \texttt{nonlocal}.
+
 
 \subsection{Обобщение по механизму работы декораторов}
 
@@ -363,8 +684,13 @@ def target():
     print('target')
 \end{lstlisting}
 то
-\lstinline[style = ironpython]{target = deco(f=target) -> inner}\\и, следовательно, \lstinline{target -> inner} (можно считать, что \lstinline{target=inner});\\поэтому при вызове \lstinline{target()} на самом деле вызывается \lstinline{inner()} и будет выведена строка \lstinline[style=ironpython]{'inner'}.
+\lstinline[style = ironpython]{target = deco(f=target) -> inner}\\и, следовательно, \lstinline{target -> inner} (можно считать, что \lstinline{target=inner});\\поэтому при вызове \lstinline{target()} на самом деле вызывается \lstinline{inner()} и будет выведена строка \lstinline[style=ironpython]{'inner'} (см.~\pic{fig:target_deco_formula}).
 
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.85]{figures/target_deco_formula.png}
+	\caption{ К вопросу о механизме работы декоратора с вложенной функцией }\label{fig:target_deco_formula}
+\end{figure}
 
 
 \section{Замыкания/фабричные функции в \texttt{Python}}
@@ -374,6 +700,10 @@ def target():
 В источнике \cite[\strbook{222}]{ramalho:python-2016} приводится несколько отличное определение\footnote{Определение содержит авторские правки}: \emph{замыкание} -- это вложенная функция с расширенной областью видимости, которая охватывает все \emph{неглобальные} переменные, объявленные в области видимости объемлющей функции, и способная работать с этими переменными даже после того как локальная область видимости объемлющей функции будет уничтожена.
 
 Замыкания и вложенные функции особенно удобны, когда требуется реализовать концепцию отложенных вычислений \cite{beazley:python-2010}.
+
+\remark{
+Все же правильнее <<фабрикой функций>> называть всю конструкцию из объемлющей и вложенной функций, а <<замыканием>> -- только вложенную функцию
+}
 
 Рассмотрим в качестве примера следующую функцию
 
