@@ -137,8 +137,142 @@ xgboost.plot_importance(model)
 
 \subsection{Особенности реализации в пакете \texttt{CatBoost}}
 
-\section{Приемы интерпретации моделей машинного обучения}
+\section{Форматирование строк в языке \texttt{Python}}
 
+Пример форматирования строк в \texttt{Python} 
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+'{:*>+12.3f}, {:#^+17.5G}, {!r}'.format(
+                                     math.pi,
+                                     -math.exp(1)*10**(+6),
+                                     type(list)  # для этого объекта будет
+                                                 # использована функция repr()
+                                 )
+# "******+3.142, ###-2.7183E+06###, <class 'type'>"
+\end{lstlisting}
+
+Часть, стоящая после двоеточия, называется \emph{спецификатором формата} \cite[\strbook{283}]{ramalho:python-2016}. Полезные приемы форматирования можно найти в \cite{prohorenok:python-2016}.
+
+\section{Хэшируемые пользовательские классы в языке \texttt{Python}}
+
+Чтобы класс был хэшируемым, следует реализовать метод \texttt{\_\_hash\_\_}. Нужно также, чтобы векторы были \emph{неизменяемыми}. И этого можно добиться, сделав компоненты \texttt{x} и \texttt{y} свойствами, доступными только для чтения.
+
+\begin{lstlisting}[
+title = {\sffamily Пример неизменяемого, но нехэшируемого класса},
+style = ironpython,
+emph = {__init__, x, y, __iter__, __repr__, __str__, angle, __format__,
+__bytes__, __eq__, __abs__, __bool__},
+numbers = none
+]
+import array
+import math
+
+class Vector2d:
+    '''
+    Неизменяемый, но еще нехэшируемый класс
+    '''
+    typecode = 'd'
+
+    def __init__(self, x, y):
+        self.__x = x  # закрытый атрибут экземпляра класса
+        self.__y = y  # закрытый атрибут экземпляра класса
+
+    # открытое свойство; прочитать значение `x` можно, но нельзя передать новое значение
+    @property  
+    def x(self):
+        return self.__x
+
+    # открытое свойство; прочитать значение `y` можно, но нельзя передать новое значение
+    @property  
+    def y(self):
+        return self.__y
+
+    def __iter__(self):
+        return (i for i in (self.x, self.y))
+
+    def __repr__(self):
+        class_name = type(self).__name__
+        return '{}({!r}, {!r})'.format(class_name, *self)
+
+    def __str__(self):
+        return str(tuple(self))
+
+    def angle(self):
+        return math.atan2(self.y, self.x)
+
+    def __format__(self, fmt_spec = ''):  # пользовательский формат
+        if fmt_spec.endswith('p'):  # если спецификатор формата заканчивается на 'p',
+                                    # то координаты выводятся в полярном формате
+            fmt_spec = fmt_spec[:-1]
+            coords = (abs(self), self.angle())
+            outer_fmt = '<{}, {}>'
+        else:
+            coords = self
+            outer_fmt = '({}, {})'
+        components = (format(c, fmt_spec) for c in coords)
+        return outer_fmt.format(*components)
+
+    def __bytes__(self):
+        return (bytes([ord(self.typecode)]) + bytes(array(self.typecode, self)))
+
+    def __eq__(self, other):
+        return tuple(self) == tuple(other)
+
+    def __abs__(self):
+        return math.hypot(self.x, self.y)
+
+    def __bool__(self):
+        return bool(abs(self))
+\end{lstlisting}
+
+То есть здесь декоратор \texttt{@property} помечает метод чтения свойств, который возвращает значение закрытого атрибута экземпляра класса \texttt{self.\_\_x} и \texttt{self.\_\_y}.
+
+Так как в реализации класса есть метод \texttt{\_\_format\_\_}, можно печатать класс управляя форматом, например,
+
+\begin{lstlisting}[
+title = {\sffamily Пример использования класса с реализованным методом \texttt{\_\_format\_\_}},
+style = ironpython,
+numbers = none
+]
+>>> v1 = Vector2d(10, 5)
+>>> '{:*^+12.3gp}'.format(v1)  # '<***+11.2****, ***+0.464***>'
+>>> '{:.3f}'.format(v1)  # '(10.000, 5.000)'
+\end{lstlisting}
+
+Наконец, можно реализовать метод \texttt{\_\_hash\_\_}. Он должен возвращать \texttt{int} и в идеале учитывать хэши объектов-атрибутов, потому что у равных объектов хэши также должны быть одинаковыми.
+
+В документации по специальному методу \texttt{\_\_hash\_\_} рекомендуется объединять хэши компонентов с помощью побитового оператора\footnote{Побитовые операторы рассматривают операнды как бинарные последовательности} \emph{исключающего ИЛИ} (\texttt{\^}) \cite[\strbook{287}]{ramalho:python-2016}
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {__hash__},
+numbers = none
+]
+...
+def __hash__(self):
+    return hash(self.__x) ^ hash(self.__y)  # побитовое исключающее ИЛИ
+\end{lstlisting}
+
+Теперь класс \texttt{Vector2d} стал \emph{хэшируемым}.
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> v1 = Vector2d(3, 4)
+>>> v2 = Vector2d(3.1, 4.2)
+>>> hash(v1), hash(v2)  # (7, 384307168202284039)
+>>> set([v1, v2])  # {Vector2d(3, 4), Vector2d(3.1, 4.2)}
+\end{lstlisting}
+
+\remark{
+Строго говоря, для создания хэшируемого типа необязательно вводить свойства или как-то иначе защищать атрибуты экземпляра класса от изменения. Требуется только корректно реализовать методы \texttt{\_\_hash\_\_} и \texttt{\_\_eq\_\_}. Но хэш-значения экземпляра никогда не должно изменяться \cite[\strbook{288}]{ramalho:python-2016}
+}
+
+ 
 \section{Области видимости в языке \texttt{Python}}
 
 Когда мы говорим о поиске значения имени применительно к программному коду, под термином \emph{область видимости} подразумевается \emph{пространство имен} -- то есть место в программном коде, где имени было присвоено значение \cite{lutz:learningpython-2011}.
@@ -1390,8 +1524,18 @@ eli5.show_weights(perm, feature_names = boston['feature_names'])  # визуал
 	\bibitem{ramalho:python-2016}{\emph{Рамальо Л.}{ Python. К вершинам мастерства. -- М.: ДМК Пресс, 2016. -- 768 с.}}
 	
 	\bibitem{slatkin:python-2016}{ \emph{Слаткин  Б.} Секреты Python: 59 рекомендаций по написанию эффективного кода. -- М.: ООО~<<И.Д. Вильямс>>, 2016. -- 272~с.}
+	
+	\bibitem{prohorenok:python-2016}{ \emph{Прохоренок Н.А.}, \emph{Дронов В.А.} Python 3 и PyQt 5. Разработка приложений. -- СПб.: БХВ-Петербург, 2016. -- 832~с.}
 \end{thebibliography}
 
 %\listoffigures\addcontentsline{toc}{section}{Список иллюстраций}
+
+
+
+
+
+
+
+
 
 \end{document}
