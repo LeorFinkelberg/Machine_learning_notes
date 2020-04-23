@@ -158,7 +158,7 @@ numbers = none
 
 \section{Хэшируемые пользовательские классы в языке \texttt{Python}}
 
-Чтобы класс был хэшируемым, следует реализовать метод \texttt{\_\_hash\_\_}. Нужно также, чтобы векторы были \emph{неизменяемыми}. И этого можно добиться, сделав компоненты \texttt{x} и \texttt{y} свойствами, доступными только для чтения.
+Чтобы класс был хэшируемым\footnote{Обычно говорят, что объект называется хэшируемым если i) у него есть хэш-значение, которое не изменяется пока объект существует, и ii) объект поддерживает сравнение с другими объектами. Однако на мой взгляд лучше сказать, что объект является хэшируемым, если его структура не может изменяется и он поддерживает сравнение с другими объектами}, следует реализовать метод \texttt{\_\_hash\_\_}. Нужно также, чтобы векторы были \emph{неизменяемыми}. И этого можно добиться, сделав компоненты \texttt{x} и \texttt{y} свойствами, доступными только для чтения.
 
 \begin{lstlisting}[
 title = {\sffamily Пример неизменяемого, но нехэшируемого класса},
@@ -228,7 +228,7 @@ class Vector2d:
         return bool(abs(self))
 \end{lstlisting}
 
-То есть здесь декоратор \texttt{@property} помечает метод чтения свойств, который возвращает значение закрытого атрибута экземпляра класса \texttt{self.\_\_x} и \texttt{self.\_\_y}.
+То есть здесь декоратор \texttt{@property} помечает метод чтения свойств, который возвращает значение закрытого атрибута экземпляра класса \texttt{self.\_\_x} или \texttt{self.\_\_y}.
 
 Так как в реализации класса есть метод \texttt{\_\_format\_\_}, можно печатать класс управляя форматом, например,
 
@@ -271,6 +271,233 @@ numbers = none
 \remark{
 Строго говоря, для создания хэшируемого типа необязательно вводить свойства или как-то иначе защищать атрибуты экземпляра класса от изменения. Требуется только корректно реализовать методы \texttt{\_\_hash\_\_} и \texttt{\_\_eq\_\_}. Но хэш-значения экземпляра никогда не должно изменяться \cite[\strbook{288}]{ramalho:python-2016}
 }
+
+\section{Перегрузка операторов в языке \texttt{Python}}
+
+Основы перегрузки операторов:
+
+\begin{itemize}
+	\item запрещается перегружать операторы для встроенных типов,
+	
+	\item запрещается создавать новые операторы, можно перегружать существующие,
+	
+	\item несколько операторов нельзя перегружать вовсе: \texttt{is}, \texttt{and}, \texttt{or}, \texttt{not} (на побитовые операторы это не распространяется)
+\end{itemize}
+
+Фундаментальное правило: оператор всегда возвращает \emph{новый объект}. Иначе говоря, нельзя модифицировать \texttt{self}, а нужно создавать и возвращать новый экземпляр подходящего типа \cite[\strbook{405}]{ramalho:python-2016}.
+
+\subsection{Перегрузка оператора сложения}
+
+Для поддержки операций с объектами \emph{разных типов} в \texttt{Python} имеется особый механизм диспетчеризации для специальных методов, ассоциированных с инфиксными операторами.
+
+Видя выражение \texttt{a + b}, интерпретатор выполняет следующие шаги:
+
+\begin{itemize}
+	\item Если у \texttt{a} есть метод \texttt{\_\_add\_\_}, вызвать \texttt{a.\_\_add\_\_(b)} и вернуть результат, если только он не равен \texttt{NotImplemented}\footnote{\texttt{NotImplemented} -- это значение-синглтон, которое должен возвращать специальный метод инфиксного оператора, чтобы сообщить интерпретатору, что не умеет обрабатывать данный операнд} (т.е. оператор не знает как обрабатывать данный операнд),
+	
+	\item Если у левого операнда \texttt{a} нет метода \texttt{\_\_add\_\_} или его вызов вернул \texttt{NotImplemented}, проверить, есть ли у правого операнда \texttt{b} <<правый>> метод \texttt{\_\_radd\_\_}\footnote{Иногда такие методы называют <<инверсными>> методами, но лучше их представлять как \emph{правые} методы, так как они вызываются от имени правого операнда}, и, если да, вызвать \texttt{b.\_\_radd\_\_(a)} и вернуть результат, если только он не равен \texttt{NotImplemented},
+	
+	\item Если у \texttt{b} нет метода \texttt{\_\_radd\_\_} или его вызов вернул \texttt{NotImplemented}, возбудить исключение \texttt{TypeError}.
+\end{itemize}
+
+Рассмотрим реализацию методов сложения для объектов
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {VectorUser, __add__, __radd__, __iter__, __init__, __repr__},
+numbers = none
+]
+import itertools
+import reprlib
+
+class VectorUser:
+    def __init__(self, seq):
+        self._seq = array('d', seq)
+
+    def __iter__(self):
+        return iter(self._seq)
+
+    def __repr__(self):
+        components = reprlib.repr(self._seq)
+        components = components[components.find('['):-1]
+        return f'Vector({components})'
+
+    def __add__(self, other):
+        try:
+            pairs = itertools.zip_longest(self, other, fillvalue=0.0)
+            return VectorUser(a + b for a, b in pairs)  # возвращает новый экземпляр класса
+        except TypeError:
+            return NotImplemented
+
+    def __radd__(self, other):
+        return self + other
+\end{lstlisting}
+
+Как работает этот код. Рассмотрим случай, когда экземпляр класса \texttt{Vector} находится слева от оператора \texttt{+}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> v1 = VectorUser([3, 4, 5])
+>>> v1 + (10, 20, 30)  # Vector([13.0, 24.0, 35.0])
+# v1.__add__((10, 20, 30))
+# удобно представлять VectorUser.__add__(v1, (10, 20, 30))
+\end{lstlisting}
+
+Первым делом интерпретатор пытается выяснить есть ли у левого операнда метод \texttt{\_\_add\_\_}. В данном случае у объекта \texttt{v1} есть такой метод, поэтому ничто не мешает вызвать его напрямую. Аргумент \texttt{self} метода \texttt{\_\_add\_\_} получает ссылку на \texttt{v1} (экземпляр класса \texttt{Vector}), а \texttt{other} -- ссылку на кортеж. Далее с помощью \texttt{zip\_longest} конструируется генератор кортежей, который в следующей строке используется в генераторном выражении при создании нового экземпляра класса \texttt{Vector} (оператор должен возвращать новый объект).
+
+Теперь рассмотрим случай, когда экземпляр класса \texttt{VectorUser} находится справа от оператора \texttt{+}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> (10, 20, 30) + v1
+\end{lstlisting}
+
+И снова интерпретатор пытается выяснить есть ли у левого операнда метод \texttt{\_\_add\_\_}. У кортежа есть такой метод, но он не умеет работать с объектом \texttt{VectorUser} (возвращает \texttt{NotImplemented}).
+
+Теперь интерпретатор проверяет есть ли у правого операнда метод \texttt{\_\_radd\_\_}. Правый операнд это экземпляр класса \texttt{VectorUser}, поэтому \texttt{v1.\_\_radd\_\_((10, 20, 30))} это то же самое что и \texttt{VectorUser.\_\_radd\_\_(v1, (10, 20, 30))}.
+
+Другими словами, аргумент \texttt{self} метода \texttt{\_\_radd\_\_} получает ссылку на объект \texttt{v1}, а аргумент \texttt{other} -- ссылку на кортеж. И тогда в выражении \texttt{self + other}, которое возвращается методом \texttt{\_\_radd\_\_}, экземпляр класса \texttt{VectorUser} окажется слева от оператора \texttt{+}. Интерпретатор, встретив выражение \texttt{self + other}, начинает с поиска метода \texttt{\_\_add\_\_} у левого операнда и, найдя его, возвращает новый экземпляр класса \texttt{VectorUser(...)}.
+
+\subsection{Перегрузка оператора умножения на скаляр}
+
+Рассмотрим в качестве примера умножение вектора \texttt{VectorUser} на скаляр
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {__mul__, __rmul__},
+numbers = none
+]
+import numbers
+
+# внутри класса VectorUser
+def __mul__(self, scalar):
+    if isinstance(scalar, numbers.Real):  # сравнение с абстрактным базовым классом
+        return VectorUser(n*scalar for n in self)
+    else:
+        return NotImplemented
+
+def __rmul__(self, scalar):
+    return self*scalar
+\end{lstlisting}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> v1 = VectorUser([3, 4, 5])
+>>> v1*4  # Vector([12.0, 16.0, 20.0])
+>>> 10*v1 # Vector([30.0, 40.0, 50.0])
+\end{lstlisting}
+
+В первом случае интерпретатор начинает с поиска метода \texttt{\_\_mul\_\_} у левого операнда. Метод найден, объект справа (число 4) действительно является экземпляром подкласса абстрактного базового класса \texttt{numbers.Real}. Значит теперь можно вернуть экземпляр \texttt{VectorUser}.
+
+Во втором случае интерпретатор так же начинает с поиска метода \texttt{\_\_mul\_\_} у левого операнда и не находит его. Поэтому на следующем шаге ищется правый метод \texttt{\_\_rmul\_\_} у правого операнда. Теперь объект \texttt{v1} в выражении \texttt{self*scalar} стоит слева и потому в методе \texttt{\_\_rmul\_\_} аргумент \texttt{self} ссылается на \texttt{v1}, а \texttt{scalar} -- на \texttt{4}. Видя выражение \texttt{self*scalar} интерпретатор вызывает метод \texttt{\_\_mul\_\_}, который на этот раз выполняется без проблем.
+
+\subsection{Операторы сравнения}
+
+Обработка операторов сравнения (\texttt{==}, \texttt{!=}, \texttt{>}, \texttt{<=} и т.д.) интерпретатором \texttt{Python} похожа на обработку инфиксных операторов, но есть два важных отличия \cite[\strbook{417}]{ramalho:python-2016}:
+
+\begin{itemize}
+	\item для прямых и инверсных (правых) методов служит один и тот же набор методов; например, в случае оператора \texttt{==} как прямой, так и правый вызов обращаются к методу \texttt{\_\_eq\_\_}, но изменяется порядок аргументов.
+	
+	\item в случае \texttt{==} и \texttt{!=}, если инверсный (правый) вызов завершается ошибкой, то \texttt{Python} сравнивает идентификаторы объектов, а не возбуждает исключение (см.~\tblref{tab:operators_comp}).
+\end{itemize}
+
+\begin{table}[h]
+	\centering
+	\caption{\itshape Операторы сравнения. Инверсные (правые) методы вызываются, когда\\ прямой вызов вернул \texttt{NotImplemented}}\label{tab:operators_comp}
+	%\renewcommand{\arraystretch}{1.05}
+	\begin{tabular}{lllll}
+		{Группа} & {Инфиксный} & Прямой вызов & Инверсный вызов & Запасной вариант \\
+		{} & оператор & метода & метода & {} \\ \hline\hline
+		Равенство & \texttt{a == b} & \texttt{a.\_\_eq\_\_(b)} & \texttt{b.\_\_eq\_\_(a)} & \texttt{return id(a) == id(b)} \\
+		\rowcolor[gray]{0.96} {} & \texttt{a != b} & \texttt{a.\_\_ne\_\_(b)} & \texttt{b.\_\_ne\_\_(a)} & \texttt{return not (a == b)} \\
+		\hline
+		Порядок & \texttt{a > b} & \texttt{a.\_\_gt\_\_(b)} & \texttt{a.\_\_lt\_\_(b)} & \texttt{raise TypeError} \\
+		\rowcolor[gray]{0.96} {} & \texttt{a < b} & \texttt{a.\_\_lt\_\_(b)} & \texttt{a.\_\_gt\_\_(b)} & \texttt{raise TypeError} \\
+		{} & \texttt{a >= b} & \texttt{a.\_\_ge\_\_(b)} & \texttt{a.\_\_le\_\_(b)} & \texttt{raise TypeError} \\
+		\rowcolor[gray]{0.96} {} & \texttt{a <= b} & \texttt{a.\_\_le\_\_(b)} & \texttt{a.\_\_ge\_\_(b)} & \texttt{raise TypeError}
+	\end{tabular}
+\end{table}
+
+Однако поведение оператора \texttt{==} пользовательских классов зависит от реализации метода \texttt{\_\_eq\_\_}. Например, пусть есть класс \texttt{Vector}
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {__eq__},
+numbers = none
+]
+# в классе Vector
+def __eq__(self, other):
+    if isinstance(other, Vector):
+        return (len(self) == len(other) and all(a == b for a, b in zip(self, other)))
+    else:
+        return NotImpemented
+\end{lstlisting}
+
+и какой-то другой класс \texttt{Vector2d}
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {__eq__},
+numbers = none
+]
+# в классе Vector2d
+def __eq__(self, other):
+    retrun tuple(self) == tuple(other)
+\end{lstlisting}
+
+Если теперь сравнить экземпляры этих классов
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> v1 = Vector([1, 2])
+>>> v2 = Vector2d(1, 2)
+>>> v1 == v2  # True
+\end{lstlisting}
+то порядок действий будет следующим:
+
+\begin{itemize}
+	\item для вычисления \texttt{v1 == v2} интерпретатор вызовет \texttt{Vector.\_\_eq\_\_(v1, v2)},
+	
+	\item метод \texttt{Vector.\_\_eq\_\_(v1, v2)} видет, что \texttt{v2} не является экземпляром класса \texttt{Vector} и возвращает \texttt{NotImplemented},
+	
+	\item получив значение \texttt{NotImplemented}, интерпретатор вызывает метод \texttt{\_\_eq\_\_} правого операнда, т.е. \texttt{v2}: \texttt{Vector2d.\_\_eq\_\_(v2, v1)},
+	
+	\item \texttt{Vector2d.\_\_eq\_\_(v2, v1)} преобразует оба операнда в кортежи и сравнивает их, результат оказывается равен \texttt{True}.
+\end{itemize}
+
+Теперь рассмотрим сравнение с кортежем
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> t = (1, 2)
+>>> v1 == t  # False
+\end{lstlisting}
+
+В этом случае:
+
+\begin{itemize}
+	\item для вычисления \texttt{v1 == t} \texttt{Python} вызывает \texttt{Vector.\_\_eq\_\_(v1, t)},
+	
+	\item метод \texttt{Vector.\_\_eq\_\_(v1, t)} видит, что кортеж \texttt{t} не является экземпляром класса \texttt{Vector} и возвращает \texttt{NotImplemented},
+	
+	\item получив результат \texttt{NotImplemented}, интерпретатор вызывает метод \texttt{\_\_eq\_\_} правого объекта, т.е. \texttt{tuple.\_\_eq\_\_(t, v1)}
+	
+	\item но \texttt{tuple.\_\_eq\_\_(t, v1)} ничего не знает о классе \texttt{Vector}, и поэтому возвращает \texttt{NotImplemented},
+	
+	\item если правый вызов вернул \texttt{NotImplemented}, то \texttt{Python} в качестве последнего средства сравнивает идентификаторы объектов, что в данном случае возвращает \texttt{False}
+\end{itemize}
+
+
 
  
 \section{Области видимости в языке \texttt{Python}}
