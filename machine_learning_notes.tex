@@ -499,6 +499,7 @@ numbers = none
 
 
 
+
  
 \section{Области видимости в языке \texttt{Python}}
 
@@ -1494,6 +1495,129 @@ numbers = none
 ]
 X.isna().any(axis=0)
 \end{lstlisting}
+
+\subsection{Управление стилями объекта \texttt{DataFrame}}
+
+У объектов \texttt{DataFrame} есть стили и ими можно управлять, выделяя максимальные/минимальные значения в таблицы, значения, которые удовлетворяют какому-то специфическому условию и пр. Однако, эти приемы работают только в notebook'ах
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import pandas as pd
+import numpy as np
+from pandas import DataFrame, Series
+
+# определяем объект-DataFrame
+m, n = 10, 4
+df = DataFrame(np.random.randn(m, n),
+               columns=[f'col{i}' for i in range(1, n+1)])
+df.loc[[4, 6, 9], ['col1', 'col4']] = np.nan
+\end{lstlisting}
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {threshold_color, background_color_max, backgournd_color_min},
+numbers = none
+]
+from typing import List, TypeVar
+
+# это способ обойти ограничения аннотаций для объектов pandas
+ElemOfDataframe = TypeVar('DataFrame.iloc[int, int]')
+
+# определяем функции для управления стилями объекта-DataFrame
+def threshold_color(val: ElemOfDataframe) -> str:
+    '''
+    Значения большие 0.5, но меньшие 1.0 выделяет красным;
+    Отрицательные значения выделяет синим;
+    Все прочие значения печатаются черным
+    '''
+    return 'color : {}'.format('red' if ((val > 0.5) and (val < 1.0)) else
+                               'blue' if val < 0. else 'black')
+
+def background_color_max(col: Series) -> List[str]:
+    '''
+    Фон максимальных значений в столбце выделяется желтым.
+    '''
+    mask = col == col.max()  # булева маска
+    return ['background-color : yellow' if bool_elem else '' for bool_elem in mask]
+
+def background_color_min(col: Series) -> List[str]:
+    '''
+    Фон максимальных значений в столбце выделяется светло-зеленым.
+    '''
+    mask = col == col.min()  # булева маска
+    return ['background-color : lightgreen' if bool_elem else '' for bool_elem in mask]
+\end{lstlisting}
+
+Работа со стилями объекта-DataFrame в ячейке выглядит следующим образом
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+(  # скобки здесь нужны для переноса строки без символа `\`
+    df.style.
+        applymap(threshold_color).
+        apply(background_color_max).
+        apply(background_color_min).
+        format(
+            {  # можно применять разные спецификаторы формата к разным столбцам
+                'col2' : '{:.5e}',
+                'col4' : '{:.3G}'
+            }
+        )
+)
+\end{lstlisting}
+
+Результат будет выглядеть как на \pic{fig:format-df}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=1]{figures/format_df.png}
+	\caption{ Отформатированный вывод \texttt{DataFrame} }\label{fig:format-df}
+\end{figure}
+
+Еще одно очень полезное применение этого приема: можно раскрашивать наиболее частые значения категориального признака
+
+\begin{lstlisting}[
+style = ironpython,
+emph = {color_code_freq_cat},
+numbers = none
+]
+from typing import List
+
+def color_code_freq_cat(col: Series) -> List[str]:
+    '''
+    Раскрашивает самые частые значения категориальных столбцов
+    '''
+    # принимает столбец-Series `col`
+    freq_cat = col.value_counts().index[0]  # самое частое значение категории
+    return ['color : {}'.format('red' if elem == freq_cat else 'black') for elem in col]
+
+df = DataFrame({'col1' : list('abbbabbaaab'),
+                'col2' : list('cdcccddcscd'),
+                'col3' : np.random.randn(11)})
+
+# apply работает со столбцами или строками
+df_test.iloc[:5].select_dtypes('object').style.apply(color_code_freq_cat)
+\end{lstlisting}
+
+Результат приведен на \pic{fig:color-code-freq-cat}. Вывести самое частое значение в каждом столбце можно с помощью конструкции
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+# apply работает со столбцами или строками
+df.apply(lambda col: col.value_counts().index[0])
+\end{lstlisting}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=1]{figures/color_code_freq_cat.png}
+	\caption{ Результат применения функции \texttt{color\_code\_freq\_cat} }\label{fig:color-code-freq-cat}
+\end{figure}
 
 
 \section{Интерпретация моделей и оценка важности признаков с библиотекой \texttt{SHAP}}
