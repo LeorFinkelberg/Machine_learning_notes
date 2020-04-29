@@ -313,20 +313,155 @@ style = ironpython,
 numbers = none
 ]
 >>> def f(): pass  # переменная f -> объект функции f()
->>> a = f  # переменная a -> объект функции f()
 >>> def g(): pass  # переменная g -> объект функции g()
+# модель: переменная -> объект
+>>> a = f  # переменная a -> объект функции f()
 >>> f = g  # переменная f -> объект фукнции g()
+# НИКАКОЙ ТРАНЗИТИВНОСТИ!
 >>> a  # <function __main__.f()>
 >>> f  # <function __main__.g()>
 \end{lstlisting}
 
-То есть, когда создается функция, например, \texttt{def f(): pass}, то создается \emph{переменная} \texttt{f}, которая получает ссылку на \emph{объект функции} \texttt{f()}.
+То есть, когда объявляется функция, например, \texttt{def f(): pass}, то создается \emph{переменная} \texttt{f}, которая получает ссылку на \emph{объект функции} \texttt{f()}.
+
+\remark{
+Даже если используется одно и тоже имя \texttt{f}: слева от оператора присваивания \texttt{f} -- это \emph{переменная}, а справа от оператора \texttt{f} -- это \emph{объект} (например, объект функции), так как в \texttt{Python} переменные ссылаются только на объекты!
+}
 
 \begin{figure}[h]
 	\centering
 	\includegraphics[scale=0.85]{figures/variable_with_link_function.png}
 	\caption{ Схема, описывающая связи между именами функций и их объектами }\label{fig:variable_with_link_function}
 \end{figure}
+
+\section{Использование \texttt{@contextmanager}}
+
+Если \emph{генератор} снабжен декоратором \texttt{@contextmanager}, то \texttt{yield} разбивает тело функции на две части:
+
+\begin{itemize}
+	\item все, что находится до \texttt{yield}, исполняется в начале блока \texttt{with}, когда интерпретатор вызывает метод \texttt{\_\_enter\_\_} ,
+	
+	\item а все, что находится после \texttt{yield}, выполняется при вызове метода \texttt{\_\_exit\_\_} в конце блока.
+\end{itemize}
+
+Например,
+
+\begin{lstlisting}[
+style = ironpython,
+title = {\sffamily неудачный пример},
+emph = {looking_glass, reverse_write}
+]
+# mirror_gen.py
+import contextlib
+
+@contextlib.contextmanager  # декорируем генераторную функцию
+def looking_glass():  # генераторная функция
+    import sys
+    original_write = sys.stdout.write  # (1)
+    
+    def reverse_write(text):  # замыкание
+        original_write(text[::-1])  # здесь original_write -- свободная переменная
+    
+    sys.stdout.write = reverse_write  # (2)
+    # все что выше `yield` выполняется в начале блока with
+    yield 'jabberwocky'.upper()  # (3)
+    # все что ниже `yield` выполняется в конце блока with
+    sys.stdout.write = original_write  # (4)
+\end{lstlisting}
+
+Комментарии к коду:
+
+\begin{itemize}
+	\item (1) -- локальная \emph{переменная} \texttt{original\_write} получает ссылку на \emph{объект функции} (вернее на объект метода) стандартного потока вывода; теперь вызывая \texttt{original\_write} мы будет вызывать \texttt{sys.stdout.write},
+	
+	\item (2) -- переменная \texttt{write} из подмодуля \texttt{stdout} модуля \texttt{sys} получает ссылку на \emph{замыкание} \texttt{reverse\_write} (функцию с расширенной областью видимости, которая включает все неглобальные переменные); теперь, когда мы вызываем \texttt{sys.stdout.write} будет вызываться \\ \texttt{reverse\_write}, который в свою очередь будет вызывать \texttt{original\_write}, вызывающий метод \texttt{sys.stdout.write} и передавать ему обращенную строку,
+	
+	\item (3) -- здесь функция приостанавливается на время выполнения блока \texttt{with},
+	
+	\item (4) -- когда поток выполнения покидает блок \texttt{with} любым способом, выполнение функции возобновляется с места, следующего за \texttt{yield}; в данном случае восстанавливается исходный метод \texttt{sys.stdout.write}
+\end{itemize}
+
+Пример работы функции
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> from mirror_gen import looking_glass
+
+>>> with looking_glass() as what:
+        print('Alice, Kitty and Snowdrop')  # pordwonS dna yttiK ,ecilA
+        print(what)                         # YKCOWREBBAJ
+\end{lstlisting}
+
+По существу декоратор \texttt{@contextlib.contextmanager} обертывает функцию классом, который реализует методы \texttt{\_\_enter\_\_} и \texttt{\_\_exit\_\_}\footnote{Этот класс называется \texttt{\_GeneratorContextManager}}.
+
+Метод \texttt{\_\_enter\_\_} этого класса выполняет следующие действия \cite[\strbook{488}]{ramalho:python-2016}:
+
+\begin{enumerate}
+	\item Вызывает \emph{генераторную функцию} \texttt{looking\_glass()}\footnote{При вызове генераторной функции возвращается объект-генератор} и запоминает объект-генератор (пусть называется \texttt{gen}),
+	
+	\item Вызывает \texttt{next(gen)}, чтобы заставить генератор выполнить код до предложения \texttt{yield},
+	
+	\item Возвращает значение, отданное \texttt{next(gen)}, чтобы его можно было связать с переменной в части \texttt{as} блока \texttt{with}, т.е. строка, отданная инструкцией \texttt{yield} связывается с переменной \texttt{what}.
+\end{enumerate}
+
+По завершении блока \texttt{with} метод \texttt{\_\_next\_\_} выполняет следующие действия:
+
+\begin{enumerate}
+	\item Смотрит, было ли передано исключение в параметре \texttt{exc\_type}; если да, вызывает \\ \texttt{gen.throw(exception)}, в результате чего строка в теле генераторной функции, содержащая \texttt{yield}, возбуждает исключение,
+	
+	\item В противном случае вызывает \texttt{next(gen)}, что приводит к выполнению части генераторной функции после \texttt{yield}.
+\end{enumerate}
+
+В рассмотренном примере есть очень серьезный дефект: если в теле блока \texttt{with} возникает исключение, то интерпретатор перехватывает его и повторно возбуждает в выражении \texttt{yield} внутри \texttt{looking\_glass}. Но здесь нет никакой обработки исключений, поэтому функция аварийно завершается, оставив систему в некорректном состоянии.
+
+Более аккуратный вариант генераторной функции приведен ниже
+
+\begin{lstlisting}[
+title = {\sffamily Правильный вариант},
+emph = {looking_glass, reverse_write},
+style = ironpython,
+numbers = none
+]
+# mirror_gen_exc.py
+import contextlib
+
+@contextlib.contextmanager
+def looking_glass():  # здесь генераторная функция работает скорее как сопрограмма
+    import sys
+    original_write = sys.stdout.write  # переменная получает -> на объект функции write
+
+    def reverse_write(text):  # замыкание
+        original_write(text[::-1])
+
+    sys.stdout.write = reverse_write  # переменная write получает -> на замыкание reverse_write
+    msg = ''
+    try:
+        yield 'jabberwocky'.upper()  # отдает строку и переключается на блок with
+    except ZeroDivisionError:
+        msg = 'Пожалуйста не делите на ноль!'
+    finally:  # выполняется в любом случае
+        sys.stdout.write = original_write  # переменная write получает -> на объект функции write
+        if msg:  # if msg != ''
+            print(msg)
+\end{lstlisting}
+
+Пример выполнения
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> from mirror_gen_exc import looking_glass
+>>> with looking_glass() as what:
+        print('aaaabb')  # bbaaaa
+        print(5/0)       # Пожалуйста не делите на ноль!
+\end{lstlisting}
+
+\remark{
+Отметим, что использование слова \texttt{yield} в генераторе, который используется совместно с декоратором \texttt{@contextmanager}, не имеет ничего общего с итерированием. В рассмотренных примерах генераторная функция работает скорее, как \emph{сопрограмма}: процедура, которая доходит до определенной точки, затем приостанавливается и дает возможность поработать клиентскому коду до тех пор, пока он не захочет возобновить выполнение процедуры с прерванного места
+}
 
 \section{Перегрузка операторов в языке \texttt{Python}}
 
@@ -1533,6 +1668,70 @@ numbers = none
 ]
 conda env export > environment.yml
 \end{lstlisting}
+
+
+\section{Инструмент автоматического построения дерева проекта под задачи машинного обучения}
+
+Для автоматизации построения типового (или кастомизированного) дерева проекта по машинному обучению и анализу данных удобно использовать \href{https://cookiecutter.readthedocs.io/en/1.7.2/README.html}{\texttt{cookicutter}}.
+
+На операционную систему под управлением \texttt{Windows} \texttt{cookicutter} можно установить с помощью менеджера пакетов \texttt{pip}
+
+\begin{lstlisting}[
+numbers = none
+]
+pip install cookiecutter
+\end{lstlisting} 
+а на операционную систему под управлением \texttt{MacOS X} с помощью менеджера \texttt{brew}
+
+\begin{lstlisting}[
+numbers = none
+]
+brew install cookiecutter
+\end{lstlisting}
+
+В самом простом случае \texttt{cookicutter} можно использовать как утилиту командной строки. Например для того чтобы создать проект по шаблону для задач машинного обучения достаточно сделать следующее
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none,
+]
+cookiecutter https://github.com/drivendata/cookiecutter-data-science
+\end{lstlisting}
+
+Утилита предложит ответить на несколько вопросов (название репозитория, имя автора и т.д.), а затем создаст дерево проекта.
+
+\section{Управление локальными переменными окружения проекта}
+
+Для того чтобы создать \emph{локальные переменные проекта}\footnote{То есть переменные, привязанные к текущему проекту} достаточно разместить пары вида <<ключ=значение>> в файле \texttt{.env}, а затем прочитать его с помощью специальной библиотеки \texttt{dotenv} \url{https://pypi.org/project/python-dotenv/}. Например
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+#.env в текущей директории проекта
+EMAIL = leor.finkelberg@yandex.ru
+POSTGRESQL_PASSWORD = Evdimonia
+\end{lstlisting}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+dotenv_path = Path(__file__).resolve().parents[0].joinpath('.env')
+print(f'[INFO] path: {dotenv_path}')  # [INFO] path: E:\[WorkDirectory]\[Python_projects]\directory_for_experiments\.env
+
+load_dotenv(dotenv_path)  # загрузить .env
+
+# извлекать значения локальных переменных окружения проекта можно с помощью `os.getenv(key)`
+# или `os.environ.get(key)`
+for key in (s.upper() for s in ('email', 'postgresql_password')):
+    print('[INFO] from file `.env`({}) -> {}'.format(key, os.getenv(key)))
+\end{lstlisting}
+
 
 \section{Приемы работы с пакетом \texttt{Vowpal Wabbit}}
 
