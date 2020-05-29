@@ -1783,6 +1783,63 @@ for key in (s.upper() for s in ('email', 'postgresql_password')):
     print('[INFO] from file `.env`({}) -> {}'.format(key, os.getenv(key)))
 \end{lstlisting}
 
+\section{Приемы работы с модулем \texttt{subprocess}}
+
+Ниже приводится пример использования модуля \texttt{subprocess} для отыскания самого большого файла в \texttt{git}-репозитории
+\begin{lstlisting}[
+style = ironpython,
+emph = {popen_2_str},
+numbers = none
+]
+import os
+import subprocess
+import pathlib
+from subprocess import Popen, PIPE, STDOUT
+
+# --- объявление функций: begin
+def popen_2_str(cmd: str, shell=True, universal_newlines=True, stdout=PIPE) -> str:
+    return Popen(cmd, shell=shell,
+                 universal_newlines=universal_newlines,
+                 stdout=stdout).stdout.read().strip()
+
+def stat(filename):
+    res = popen_2_str(f"stat {filename}")
+    print(f'>>> Statistic:\n{res}')
+
+def summary(commits):
+    print(f'### Summary ({__file__}) ###:\n>>> idx-file name: {idx_file}'
+          f'\n>>> SHA blob: {shablob}\n>>> Commits:')
+    print(commits)
+# --- объявление функций: end
+
+GIT_PATH = pathlib.Path('.git/objects/pack/')
+
+# тоже самое что и `git gc &> /dev/null`
+exit_code = subprocess.call("git gc", shell=True,
+                            stdout=open(os.devnull, 'w'), stderr=STDOUT)
+
+if not exit_code:
+    # возвращает имя idx-файла
+    idx_file = popen_2_str(f"ls -l {GIT_PATH} | grep -iE '*.idx' "
+                           f"| awk -F ' ' '{{ print $9 }}'")
+    # возвращает абсолютный путь до idx-файла
+    abs_path_idx_file = pathlib.Path.joinpath(GIT_PATH, idx_file)
+    if os.path.exists(abs_path_idx_file):
+    # возвращает SHA <<большого>> файла
+        shablob = popen_2_str(f"git verify-pack -v {abs_path_idx_file} | sort -k 3 -n "
+                              f"| tail -n 1 | awk -F ' ' '{{ print $1 }}'")
+        # возвращает имя файла по его SHA
+        filename = popen_2_str(f"git rev-list --objects --all | grep {shablob} "
+                               f"| awk -F ' ' '{{ print $2 }}'")
+        # возвращает коммиты, связанные с данным файлом
+        commits = popen_2_str(f"git log --oneline -- {filename}")
+        summary(commits)
+        stat(filename)
+    else:
+        print(f"File {abs_path_idx_file} not found...")
+else:
+    print('Something went wrong.')
+\end{lstlisting}
 
 \section{Приемы работы с пакетом \texttt{Vowpal Wabbit}}
 
