@@ -10,6 +10,7 @@
 		]{geometry}
 \RequirePackage{multicol}
 \RequirePackage{hyperref}
+\RequirePackage{shorttoc}
 \hypersetup{
     colorlinks=true,
     linkcolor=blue,
@@ -31,6 +32,30 @@
 \RequirePackage{color}
 \RequirePackage{colortbl}  % настраивает цвет таблицы
 \RequirePackage{textcomp}
+% --------- MAC APPLE ---------
+\RequirePackage{menukeys}  % для спецсимволов mac
+\tikzset{tw@shadowedangularkeys@base/.style={%
+	tw@set@tikz@colors,
+	inner sep=0pt,
+	inner xsep=2pt,
+	text height=1.825ex,
+	text depth=0.7ex,
+	minimum width=1.5em,
+	font=\relsize{-1}\itshape,
+	general shadow={%
+	shadow xshift=.2ex, shadow yshift=-.15ex,
+	fill=\usemenucolor{c},
+		},
+	}
+}
+\renewmenumacro{\menu}[>]{angularmenus} % default: menus
+%\renewmenumacro{\directory}[>]{hyphenatepathswithfolder} % default: paths
+\renewmenumacro{\directory}[>]{paths} % default: paths, pathswithblackfolder
+\renewmenumacro{\keys}{shadowedangularkeys} % default: roundedkeys
+\changemenucolor{gray}{br}{named}{black}  % border
+\changemenucolor{gray}{bg}{named}{deepblue}  % background
+%\changemenucolor{gray}{txt}{named}{blue}  % text
+% --------- MAC APPLE ---------
 % определяем пользовательские цвета
 \definecolor{mygreen}{rgb}{0,0.6,0}
 \definecolor{mymauve}{rgb}{0.58,0,0.82}
@@ -194,7 +219,7 @@
 	keywordstyle = \color{deepblue},  % стиль ключевых слов
 	stringstyle = \itshape\color{deepgreen},  % стиль строк
 	emphstyle = \color{blue},  % цвет идентифиакторов, которые включены в группу emph = {} в листингах
-	commentstyle = \color{red},  % коментарии зеленым цветом
+	commentstyle = \color{deepred},  % коментарии зеленым цветом
 	morestring=[s]{'''}{'''},
 	morestring=[s]{"""}{"""}
 }

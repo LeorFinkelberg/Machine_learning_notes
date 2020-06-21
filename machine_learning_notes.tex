@@ -20,7 +20,19 @@
 
 Здесь приводятся заметки по некоторым вопросам, касающимся машинного обучения, анализа данных, программирования на языках \texttt{Python}, \texttt{R} и прочим сопряженным вопросам так или иначе, затрагивающим работу с данными.
 
+
+\shorttableofcontents{Краткое содержание}{1}
+
 \tableofcontents
+
+\section{Теория алгоритмов и структуры данных}
+
+В \emph{теории сложности вычислений} широкое распространение получило обозначение <<\emph{О}-большое>>. Типичный результат выглядит следующим образом: <<данный алгоритм работает за время $ O(n^2 \log n) $>>, и его следует понимать как <<существует такая константа $ C > 0 $, что \emph{время работы} алгоритма в \emph{наихудшем} случае не превышает $ C\,n^2 \log n $, начиная с некоторого $ n $>>.
+
+Практическая ценность асимптотических результатов такого рода зависит от того, насколько мала неявно подразумеваемая константа $ c $. Как мы уже отмечали выше, для подавляющего большинства известных алгоритмов она находится в разумных пределах, поэтому, как правило, имеет место следующий тезис: алгоритмы, более эффективные с точки зрения их асимптотического поведения, оказываются также более эффективными и при тех сравнительно небольших размерах входных данных, для которых они реально используются на практике. Другими словами, \emph{асимптотические оценки эффективности} достаточно полно отражают реальное положение вещей.
+
+Теория сложности вычислений по определению считает, что алгоритм, работающий за время $ O(n^2 \log n) $ лучше алгоритма с временем работы $ O(n^3) $, и в подавляющем большинстве случаев это отражает реально существующую на практике ситуацию.
+
 
 \section{Градиентный бустинг}
 
@@ -1930,11 +1942,89 @@ else:
 
 Хотя каждое решающее дерево может иметь большой разброс по отношению к определенному набору тренировочных данных, обучение деревьев на разных наборах образцов позволяет снизить общий разброс леса.
 
-\subsection{Приемы обнаружения аномалий в данных}
+
+\section{Приемы обнаружения аномалий в данных}
 
 
 
 \section{Приемы работы с пакетом \texttt{Vowpal Wabbit}}
+
+\section{Приемы работы с библиотекой \texttt{BeautifulSoup}}
+
+\subsection{Пример использования \texttt{BeautifulSoup} для скрапинга сайта}
+
+В качестве простого примера извлечем имена руководителей компаний из группы компаний оборонного комплекса. Имена нужных тегов удобно искать с помощью специальных инструментов разработчика, доступных в веб-браузере. Например, в Yandex-браузере получить доступ к панели разработчика можно так \menu{Настройки > Дополнительно > Дополнительные инструменты > Инструменты разработчика}.
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import requests
+import pandas as pd
+import psycopg2
+from pprint import pprint
+from bs4 import BeautifulSoup
+from pandas import DataFrame, Series
+
+main_url = 'http://ros-oborona.ru/koncerny.html'
+res = requests.get(main_url)
+soup = BeautifulSoup(res.text, features='lxml')
+
+company_list = soup.find('div',
+                         {'class' : 'elementor-text-editor elementor-clearfix'})
+profile_list = company_list.find_all('td')
+
+href_list = []
+for elem in profile_list:
+    try:
+        href_list.append(elem.find('a').get('href'))
+    except AttributeError:
+        continue
+
+heads_of_company_list = []
+for company_url in href_list:
+    res_elem = requests.get(company_url)
+    soup_elem = BeautifulSoup(res_elem.text, features='lxml')
+    head_of_company = soup_elem.find('span',
+                                     {'class' : 'company-info__text'}).text
+    if len(head_of_company.split()) == 3:
+        heads_of_company_list.append(head_of_company.split())
+
+heads_of_company_df = DataFrame(heads_of_company_list,
+                                columns=['lastname', 'firstname', 'middlename'])
+heads_of_company_df.index.name = 'id'
+heads_of_company_df.to_csv('heads_of_company.csv', index=True)
+
+# -- PostgreSQL
+conn = psycopg2.connect('dbname=postgres user=postgres password=evdimonia')
+cursor = conn.cursor()
+
+heads_df = pd.read_csv('heads_of_company.csv')
+heads_records = heads_df.to_dict('records')
+
+cursor.execute(
+            '''CREATE TABLE IF NOT EXISTS heads_of_company(
+                   id integer primary key,
+                   lastname text not null,
+                   firstname text not null,
+                   middlename text not null)'''
+)
+cursor.executemany(
+            '''INSERT INTO heads_of_company(id, lastname, firstname, middlename)
+                   VALUES (%(id)s, %(lastname)s, %(firstname)s, %(middlename)s)
+                   ON CONFLICT DO NOTHING''', heads_records
+)
+conn.commit()
+
+cursor.execute('SELECT * FROM heads_of_company')
+fetchall = cursor.fetchall()
+pprint(fetchall)
+# выведет
+# [(0, 'Мясников', 'Александр', 'Алексеевич'),
+# (1, 'Медовщук', 'Ирина', 'Сергеевна'),
+# (2, 'Матыцын', 'Александр', 'Петрович'),
+# (3, 'Смирнова', 'Оксана', 'Константиновна'),
+# ...]
+\end{lstlisting}
 
 \section{Приемы работы с библиотекой \texttt{pandas}}
 
@@ -2377,6 +2467,8 @@ re.compile('y*?(\d{1,3}?)').search('xy1234z').groups()[0]  # '1'
 \end{lstlisting}
 
 
+\listoffigures\addcontentsline{toc}{section}{Список иллюстраций}
+
 % Источники в "Газовой промышленности" нумеруются по мере упоминания 
 \begin{thebibliography}{99}\addcontentsline{toc}{section}{Список литературы}
 	\bibitem{lutz:learningpython-2011}{{\emph{Лутц М.} Изучаем Python, 4-е издание. -- Пер. с англ. -- СПб.: Символ-Плюс, 2011. -- 1280~с. }
@@ -2391,15 +2483,5 @@ re.compile('y*?(\d{1,3}?)').search('xy1234z').groups()[0]  # '1'
 	
 	\bibitem{prohorenok:python-2016}{ \emph{Прохоренок Н.А.}, \emph{Дронов В.А.} Python 3 и PyQt 5. Разработка приложений. -- СПб.: БХВ-Петербург, 2016. -- 832~с.}
 \end{thebibliography}
-
-%\listoffigures\addcontentsline{toc}{section}{Список иллюстраций}
-
-
-
-
-
-
-
-
 
 \end{document}
