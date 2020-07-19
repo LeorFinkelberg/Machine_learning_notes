@@ -1945,6 +1945,18 @@ else:
 
 \section{Приемы обнаружения аномалий в данных}
 
+\section{Приемы работы с ETL-инструментом \texttt{Apache NiFi}}
+
+<<Одиночный>> экземпляр \texttt{Apache NiFi} \url{https://nifi.apache.org/} можно создать с использованием Docker
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+docker run -d --name nifi -p 8080:8080 apache/nifi:latest
+\end{lstlisting}
+
+Экземпляр будет доступен через web-браузер по \verb|http://localhost:8080/nifi|.
+
 
 
 \section{Приемы работы с пакетом \texttt{Vowpal Wabbit}}
