@@ -21,7 +21,7 @@
 Здесь приводятся заметки по некоторым вопросам, касающимся машинного обучения, анализа данных, программирования на языках \texttt{Python}, \texttt{R} и прочим сопряженным вопросам так или иначе, затрагивающим работу с данными.
 
 
-\shorttableofcontents{Краткое содержание}{1}
+%\shorttableofcontents{Краткое содержание}{1}
 
 
 \tableofcontents
@@ -182,6 +182,18 @@ numbers = none
 \end{lstlisting}
 
 Часть, стоящая после двоеточия, называется \emph{спецификатором формата} \cite[\strbook{283}]{ramalho:python-2016}. Полезные приемы форматирования можно найти в \cite{prohorenok:python-2016}.
+
+
+\section{Большие данные в Hadoop}
+
+\texttt{Hadoop} лучше всего подходит для:
+\begin{itemize}
+	\item Для хранения и обработки \emph{неструктурированных данных} объемом от \underline{1 терабайта} -- такие массивы сложно и дорого хранить в локальном хранилище,
+	
+	\item Для компонуемых вычислений -- когда нужно собрать множество схожих разрозненных данных в одно целое. Также подходит для выделения полезной информации из массива лишней информации,
+	
+	\item Для пакетной обработки, обогащения данных и ETL -- извлечения информации из внешних источников, ее переработки и очистки под потребности компании, последующей загрузки в базу данных.
+\end{itemize}
 
 \section{Хэшируемые пользовательские классы в языке \texttt{Python}}
 
@@ -2315,7 +2327,7 @@ def invboxcox(arr: np.array, lmbda: np.float) -> np.array:
 	\end{cases}
 \end{align*}
 
-Преобразование Йео-Джонсона (как впрочем и преобразование Бокса-Кокса) реализовано в библиотеке \texttt{sklearn}
+Преобразование Йео-Джонсона (как впрочем и преобразование Бокса-Кокса) реализовано в библиотеке \texttt{sklearn} (см.~раздел документации \href{https://scikit-learn.org/stable/modules/preprocessing.html#preprocessing-transformer}{Non-linear transformation})
 \begin{lstlisting}[
 style = ironpython,
 numbers = none
@@ -2332,6 +2344,40 @@ yj.fit_transform(data_log)  # вернет новое представление
 \remark{%
 Преобразование Бокса-Кокса требует, чтобы значения набора данных были строго положительными, в то время как преобразование Йео-Джонсона может работать как с положительными, так и с отрицательными значениями
 }
+
+\section{Хранилища данных. DWH}
+
+Хранилище данных (Data WareHouse, DWH) -- предметно-ориентированная информационная база данных, специально разработанная и предназначенная для подготовки отчетов и безнес-анализа с целью поддержки принятия решений в организации. Строится на основе систем управления базами данных и систем поддержки принятия решений. Данные, поступающие в хранилище данных, как правило, доступны только для чтения.
+
+\remark{%
+DWH необходимо для проведения эффективного бизнес-анализа и построения выжных для бизнеса выводов
+}
+
+Данные из OLTP-систем копируются в хранилище данных таким образом, чтобы при построении отчетов и OLAP-анализе не использовать ресурсы транзакционной системы и не нарушалась ее стабильность.
+
+В чем разница между обычными базами данных и хранилищем данных:
+\begin{itemize}
+	\item Обычные СУБД хранят данные строго для определенных подсистем (другими словами базы данных привязаны к своим приложениям). Например, база данных кадровиков хранит данные по персоналу, но не товары или сделки. DWH, как правило, \emph{хранит информацию разных подразделений} -- там найдутся данные и по товарам, и по персоналу, и по сделкам,
+	
+	\item Обычная база данных, которая ведется в рамках стандартной деятельности компании , содержит только актуальную информацию, нужную в данный момент времени для функционирования определенной системы. В DWH пишутся не столько копии актуальных состояний, сколько \emph{исторические данные} и \emph{агрегированные значения}. Например, состояние запасов разных категорий товаров на конец смены за последние пять лет. Иногда в DWH пишутся и более крупные пачки данных, если они имеют критическое значение для бизнеса -- например, полные данные по продажам и сделкам, то есть, по сути, это копия базы данных отдела продаж,
+	
+	\item Информация обычно сразу попадает в рабочие базы данных, а уже оттуда некоторые записи переползают в DWH. Склад данных, по сути, отражает состояние других баз данных и процессов в компании уже после того, как вносятся изменения в рабочих базах.
+\end{itemize}
+
+Короче говоря, DWH -- это система данных, отдельная от оперативной системы обработки данных. В корпоративных хранилищах в удобном для анализа виде хранятся архивные данные из разных, иногда очень разнородных источников. Эти данные предварительно обрабатываются и загружаются в хранилище в ходе процессов извлечения, преобразования и загрузки, называемых ETL.
+
+Хранилище данных, кроме всего прочего, упрощает процедуру сбора данных из корпоративных СУБД:
+\begin{itemize}
+	\item Доступ к нужным данным. Если компания большая, на получение данных из разных источников нужно собирать разрешения и доступы. У каждого подразделения в такой ситуации, как правило, свои базы данных со своими паролями, которые надо будет запрашивать отдельно. В DWH все нужное будет под рукой в готовом виде. Можно просто сконстуировать запрос и вытащить нужную информацию,
+	
+	\item Сохранность нужных данных. Данные в DWH не теряются и хранятся в виде, удобном для принятия решений: есть исторические записи, есть агрегированные значения. В операционной базые данных такой информации может и не быть. Например, администраторы точно не будут хранить на складском сервере архив запасов за последние 10 лет -- БД склада была бы в таком случае слишком тяжелой. А вот хранить агрегированные запасы со склада в DWH -- это нормально,
+	
+	\item Устойчивость работы бизнес-систем. DWH оптимизируется для работы аналитиков, которые могут использовать сложные, тяжелые запросы к базе данных, способные повесить сервер с боевой базой данных, и вызвать проблемы в сопряженных системах.
+\end{itemize}
+
+
+Для задач, связанных с промышленным интернетом вещей (IIoT), данные с датчиков можно собирать в <<\emph{озеро данных}\footnote{Озеро данных -- хранилище, в котором собрана неструктурированная информация любых форматов из разных источников данных. Озера данных дешевле обычных баз данных, они более гибкие и легче масштабируются. Данные можно извлекать из озера по определенным признакам или анализировать прямо внутри озера, используя системы аналитики, но важно контролировать данные, поступающие в озеро данных}>> без фильтрации, а когда данных накопиться достаточно, можно будет их проанализировать и понять из-за чего случаются поломки. Озера данных нужны для гибкого анализа данных и построения гипотез. Они позволяют собирать как можно больше данных, чтобы потом с помощью инструментов машинного обучения и аналитики извлекать полезную для бизнеса информацию.
+
 
 
 \section{Приемы работы с ETL-инструментом \texttt{Apache NiFi}}
@@ -2895,6 +2941,179 @@ import re
 re.compile('y*?(\d{1,3}?)').search('xy1234z').groups()[0]  # '1'
 \end{lstlisting}
 
+\section{Работа с базами данных в \texttt{Python}}
+
+Для работы с \texttt{PostgreSQL} из-под \texttt{Python}, как правило, используется драйвер \texttt{psycopg2}. Можно использовать еще и \texttt{sqlalchemy}.
+
+Пример
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import psycopg2
+import sqlalchemy
+
+# PostgreSQL
+conn_pg = psycopg2.connect('postgesql://postgres@localhost:5432')
+cur_pg = conn_pg.cursor()
+
+# вывести элементы из столбца `kv` из таблицы `test_hstore`, хранящей пары <<ключ-значение>>,
+# и выбрать те строки, в которых содержится ключ `solver type`
+cur_pg.execute('''
+    SELECT kv->'solver type' FROM test_hstore WHERE kv ? 'solver type'
+''')
+cur_pg.fetchall()  # [('direct',), ('iterative',)]
+
+# SQLAlchemy
+engine_sql = sqlalchemy.create_engine('postgresql://postgres@localhost:5432')
+conn_sql = engine_sql.connect()
+conn_sql.execute('''
+    SELECT kv->'solver type' FROM test_hstore WHERE kv ? 'solver type'
+''').fetchall()  # [('direct',), ('iterative',)]
+\end{lstlisting}
+
+Для работы с аналитической СУБД \texttt{Vertica} есть своя библиотека \texttt{vertica\_python}\footnote{Устанавливается как обычно с помощью менеджера пакетов \texttt{pip}: \texttt{pip install vertica-python}} \url{https://github.com/vertica/vertica-python}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+imoprt vertica_python
+
+conn_info = {
+    'host' : '127.0.0.1',
+    'port' : 5433,
+    'user' : 'some_user',
+    'password' : 'some_password',
+    'database' : 'a_database',
+    'kerberos_service_name' : 'vertica_krb',
+    'kerberos_host_name' : 'vlcuster.example.com'
+}
+
+with vertica_python.conn(**conn_info) as conn:
+    # do things
+\end{lstlisting}
+
+Вариант с баллансировкой нагрузки
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import vertica_python
+
+conn_info = {
+    'host' : '127.0.0.1',
+    'port' : 5433,
+    'user' : 'some_user',
+    'password' : 'some_password',
+    'database' : 'vdb',
+    'connection_laod_balance' : True
+}
+
+# Server enables load balancing
+with vertica_python.connect(**conn_info) as conn:
+    cur = conn.cursor()
+    cur.execute('SELECT NODE_NAME FROM V_MONITOR.CURRENT_SESSION')
+    print('Client connects to primary node:', cur.fetchone()[0])
+    cur.execute('SELECT SET_LOAD_BALANCE_POLICY('ROUNDROBIN'))
+    
+with vertica_python.connect(**conn_info) as conn:
+    cur = conn.cursor()
+    cur.execute('SELECT NODE_NAME FROM V_MONITOR.CURRENT_SESSION')
+    print('Client redirects to node:', cur.fetchone()[0])
+\end{lstlisting}
+
+Доступ к колоночной аналитической СУБД \texttt{ClickHouse}, позволяющей выполнять аналитические запросы в режиме реального времени на структурированных больших данных, можно получить с помощью Python-библиотеки \texttt{clickhouse\_driver}\footnote{Устанавливается с помощью менеджера пакетов \texttt{pip}: \texttt{pip install clickhouse-driver}}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+# DP API example
+from clickhouse_driver import connect
+
+conn = connect('clickhouse://localhost')
+cursor = conn.cursor()
+
+cursor.execute('CREATE TABLE test(x Int32) ENGINE=Memory')
+cursor.executemany(
+    'INSERT INTO test(x) VALUES',
+    [{'x' : 100}]
+)
+cursor.execute(
+    'INSERT INTO test(x) '
+    'SELECT * FROM system.numbers LIMIT %(limit)s',
+    {'limit' : 3}
+)
+cursor.execute('SELECT sum(x) FROM test')
+cursor.fetchall()  # [(303,)]
+\end{lstlisting}
+
+Также есть возможность управлять работой \emph{графовых} баз данных, например, Neo4j\footnote{Существует соответствующая python-библиотека \texttt{neo4j} \url{https://neo4j.com/developer/python/}. Используется собственные язык запросов Cypher, но поддерживается и Gremlin} \url{https://neo4j.com} с помощью, например, специального языка обхода графов \texttt{Gremlin} (есть альтернативы). Есть реализация Gremlin-Python \url{https://tinkerpop.apache.org/docs/current/reference/#gremlin-python} и соответствующая библиотека \verb|gremlin_python|\footnote{Устанавливается как обычно с помощью менеджера пакетов \texttt{pip}: \texttt{pip install gremlinpython}}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+from gremlin_python.process.anonymous_traversal_source import traversal
+
+g = traversal().withRemote(
+        DriverRemoteConnection('ws://localhost:8182/gremlin','g', headers={'Header' : 'Value'}))
+\end{lstlisting}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+# классы, функции и токены, которые обычно используются с Gremlin
+from gremlin_python import statics
+from gremlin_python.process.anonymous_traversal import traversal
+from gremlin_python.process.graph_traversal import __
+from gremlin_python.process.strategies import *
+from gremlin_python.driver.driver_remote_connection import DriverRemoteConnection
+from gremlin_python.process.traversal import T
+from gremlin_python.process.traversal import Order
+from gremlin_python.process.traversal import Cardinality
+from gremlin_python.process.traversal import Column
+from gremlin_python.process.traversal import Direction
+from gremlin_python.process.traversal import Operator
+from gremlin_python.process.traversal import P
+from gremlin_python.process.traversal import Pop
+from gremlin_python.process.traversal import Scope
+from gremlin_python.process.traversal import Barrier
+from gremlin_python.process.traversal import Bindings
+from gremlin_python.process.traversal import WithOptions
+
+...
+\end{lstlisting}
+
+Затем в консоли можно выполнить запрос
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> g.V().hasLabel('person').has('age',P.gt(30)).order().by('age',Order.desc).toList()  # [v[6], v[4]]
+\end{lstlisting}
+
+Приемы базовой работы с Gremlin можно изучить в разделе документации \url{https://tinkerpop.apache.org/docs/current/reference/#basic-gremlin}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+v1 = g.addV('person').property('name','marko').next()
+v2 = g.addV('person').property('name','stephen').next()
+g.V(Bindings.of('id',v1)).addE('knows').to(v2).property('weight',0.75).iterate()
+\end{lstlisting}
+
+Простыми словами, обход графа -- это переход от одной его вершины к другой в поисках свойств связей этих вершин. Связи (линии, соединяющие вершины) называются направлениями, путями, гранями или \emph{ребрами} графа. Вершины графа также называются \emph{узлами}.
+
+Основными алгоритмами обхода графа являются:
+\begin{itemize}
+	\item поиск в глубину (depth-first search, DFS),
+	
+	\item поиск в ширину (breadth-first search, BFS).
+\end{itemize}
+
+
+
 
 \listoffigures\addcontentsline{toc}{section}{Список иллюстраций}
 
@@ -2913,6 +3132,10 @@ re.compile('y*?(\d{1,3}?)').search('xy1234z').groups()[0]  # '1'
 	\bibitem{prohorenok:python-2016}{ \emph{Прохоренок Н.А.}, \emph{Дронов В.А.} Python 3 и PyQt 5. Разработка приложений. -- СПб.: БХВ-Петербург, 2016. -- 832~с.}
 	
 	\bibitem{chandola:2009}{\emph{Chandola V.}, \emph{Banerjee A.} etc. } Anomaly detection: A survey, ACM Computing Surveys, vol. 41(3), 2009, pp. 1--58.
+	
+	\bibitem{albon:2019}{\emph{Элбон К.} Машинное обучение с использованием Python. Сборник рецептов. -- СПб.: БХВ-Петербург, 2019. -- 384 с.}
+	
+	\bibitem{karau:2018}{\emph{Карау Х.}, \emph{Уоррен Р.} Эффективный Spark. Масштабирование и оптимизация. -- СПб. Питер, 2018. -- 352 с.}
 \end{thebibliography}
 
 \end{document}
