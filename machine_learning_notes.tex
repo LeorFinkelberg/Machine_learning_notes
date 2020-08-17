@@ -2487,7 +2487,26 @@ pprint(fetchall)
 style = ironpython,
 numbers = none
 ]
-X.select_dtypes('category').apply(lambda col: col.unique().shape[0])
+X.select_dtypes('object').apply(lambda col: col.unique().shape[0])
+X.select_dtypes('object').apply(lambda col: col.unique().size)
+X.select_dtypes('object').nunique().values[0]
+\end{lstlisting}
+
+\subsection{Прочитать файл, распарсить временную метку, назначить временную метку индексом}
+
+Иногда случается, что столбец в обрабатываемом файле, имеющий смысл временной метки, не приведен к нужному формату и поэтому простое чтение файла средствами \texttt{pandas} не помогает. Чтобы правильно распарсить столбец с временной меткой следует сделать так
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+#! cat test_file.csv
+# date, stress
+# 2020/08/18, 100
+# 2020/08/19, 200
+
+>>> import pandas as pd
+>>> data = pd.read_csv('test_file.csv', index_col='date', parse_date=True)
+>>> type(data.index[0]) # pandas._libs.tslibs.timestamps.Timestamp
 \end{lstlisting}
 
 \subsection{Число пропущенных значений в объекте \texttt{DataFrame}}
@@ -2947,7 +2966,7 @@ re.compile('y*?(\d{1,3}?)').search('xy1234z').groups()[0]  # '1'
 
 \section{Работа с базами данных в \texttt{Python}}
 
-Для работы с \texttt{PostgreSQL} из-под \texttt{Python}, как правило, используется драйвер \texttt{psycopg2}. Можно использовать еще и \texttt{sqlalchemy}.
+Для работы с \texttt{PostgreSQL} из-под \texttt{Python}, как правило, используется драйвер \texttt{psycopg2}. Можно использовать еще и \texttt{sqlalchemy}. Согласно спецификации DB-API 2.0, после создания объекта соединения необходимо создать объект-курсор. Все дальнейшие запросы должны производиться через этот объект.
 
 Пример
 \begin{lstlisting}[
@@ -2958,8 +2977,22 @@ import psycopg2
 import sqlalchemy
 
 # PostgreSQL
-conn_pg = psycopg2.connect('postgesql://postgres@localhost:5432')
+conn_pg = psycopg2.connect('postgesql://postgres@localhost:5432/demo')
 cur_pg = conn_pg.cursor()
+# возвращает название источника данных в формате строки
+conn_pg.dsn # 'postgesql://postgres@localhost:5432/demo'
+conn_pg.get_dsn_parameters()
+#{'user': 'postgres',
+# 'passfile': 'C:\\Users\\ADM\\AppData\\Roaming/postgresql/pgpass.conf',
+# 'dbname': 'demo',
+# 'host': 'localhost',
+# 'port': '5432',
+# 'tty': '',
+# 'options': '',
+# 'sslmode': 'prefer',
+# 'sslcompression': '0',
+# 'krbsrvname': 'postgres',
+# 'target_session_attrs': 'any'}
 
 # вывести элементы из столбца `kv` из таблицы `test_hstore`, хранящей пары <<ключ-значение>>,
 # и выбрать те строки, в которых содержится ключ `solver type`
@@ -2975,6 +3008,202 @@ conn_sql.execute('''
     SELECT kv->'solver type' FROM test_hstore WHERE kv ? 'solver type'
 ''').fetchall()  # [('direct',), ('iterative',)]
 \end{lstlisting}
+
+Еще чтобы не беспокоиться на счет статуса объекта-курсора и соединения можно пользоваться менеджером контекста
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import psycopg2
+
+with psycopg2.connect('postgresql://postgres@localhost:5432/demo') as conn: # соединение
+    with conn.cursor() as cur: # объект-курсора
+        cur.execute('select * from tickets limit %(lmt)s;', {'lmt' : 5})  # даже если передается объект целочисленного типа следует использовать %()s!!!
+        res = cur.fetchall()
+        
+        for row in res:
+            print(row)
+\end{lstlisting}
+
+Библиотека \texttt{asyncpg} \url{https://github.com/MagicStack/asyncpg} используется когда требуется реализовать \emph{асинхронную} работу с базой данной PostgreSQL. Устанавливается библиотека как обычно c помощью менеджера пакетов \texttt{pip}: \texttt{pip install asyncpg}.
+
+Библиотека \texttt{asyncpg} не реализует Python DB-API, так как DB-API это синхронный интерфейс программного приложения, а \texttt{asyncpg} построена вокруг асинхронной I/O-модели.
+
+В библиотеке \texttt{psycopg2} метод \texttt{cursor.execute()} \emph{блокирует} программу на все время выполнения запроса. Если запрос сложный, то программа будет заблокирована надолго, что не всегда желательно. Это означает, что пока запрос выполняется, программа может заниматься другими делами.
+
+Библиотека \texttt{asyncpg} предоставляет асинхронный API, предназначенный для работы совместно с \texttt{asyncio} -- библиотекой, используемой для написания конкурентного кода на Python.
+
+Замечания: ключевое слово \texttt{async} означает, что определенная далее функция является сопрограммой, т.е. асинхронна и должна выполняться особым образом, а ключевое слово \texttt{await} служит для синхронного выполнения сопрограмм. 
+
+Пример использования
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+#import asyncio
+>>> import asyncpg
+
+>>> conn = await asyncpg.connect('postgresql://postgres@localhost:5432/demo')
+>>> values = await conn.fetch('''
+        SELECT passenger_name, count(*)
+        FROM tickets
+        GROUP BY 1
+        ORDER BY 2 DESC
+        LIMIT 5;
+    ''')
+>>> type(values[0]) # asyncpg.Record
+>>> values
+#[<Record passenger_name='ALEKSANDR IVANOV' cnt=842>,
+# <Record passenger_name='ALEKSANDR KUZNECOV' cnt=755>,
+# <Record passenger_name='SERGEY IVANOV' cnt=634>,
+# <Record passenger_name='SERGEY KUZNECOV' cnt=569>,
+# <Record passenger_name='VLADIMIR IVANOV' cnt=551>]
+
+>>> res = await conn.fetch('''
+              SELECT passenger_name, contact_data #>> '{phone}'::text[] AS phone
+              FROM tickets
+              LIMIT 3;
+          ''')
+>>> res
+# [<Record passenger_name='VALERIY TIKHONOV' phone='+70127117011'>,
+#  <Record passenger_name='EVGENIYA ALEKSEEVA' phone='+70378089255'>,
+#  <Record passenger_name='ARTUR GERASIMOV' phone='+70760429203'>]
+>>> res[0].get('phone') # '+70127117011'
+>>> for k in res[1].keys():
+        print(k)
+# passenger_name
+# phone
+>>> for v in res[2].values():
+        print(v)
+# ARTUR GERASIMOV
+# +70760429203
+>>> for i, row in enumerate(res, 1): # обход строк выдачи
+        print(f'{i}: ' +
+               ','.join([f'/{k}/->{v}' for k,v in row.items()])
+        )
+>>> await conn.close()
+\end{lstlisting}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import asyncio
+import asyncpg
+import datetime
+
+async def main():
+    # Establish a connection to an existing database named "test"
+    # as a "postgres" user.
+    conn = await asyncpg.connect('postgresql://postgres@localhost/test')
+    # Execute a statement to create a new table.
+     # `execute` если не нужно ничего возвращать
+    await conn.execute('''
+            CREATE TABLE users(
+              id serial PRIMARY KEY,
+              name text,
+              dob date
+            )
+   ''')
+
+    # Insert a record into the created table.
+    await conn.execute('''
+        INSERT INTO users(name, dob) VALUES($1, $2)
+    ''', 'Bob', datetime.date(1984, 3, 1))
+
+    # Select a row from the table.
+    row = await conn.fetchrow(
+        'SELECT * FROM users WHERE name = $1', 'Bob')
+    # *row* now contains
+    # asyncpg.Record(id=1, name='Bob', dob=datetime.date(1984, 3, 1))
+
+    # Close the connection.
+    await conn.close()
+
+asyncio.get_event_loop().run_until_complete(main())
+\end{lstlisting}
+
+Иногда бывает удобно использовать предварительно подготовленные параметризованные SQL-запросы
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+# подготовленный параметризованный SQL-запрос
+>>> cmpt_stmt = await conn.prepare('select 2^$1')
+>>> cmpt_stmt # <asyncpg.prepared_stmt.PreparedStatement at 0xfc4fd68>
+>>> res = await cmpt_stmt.fetchval(2); res # 4.0
+>>> res await cmpt_stmt.fetchval(5); res # 32.0
+\end{lstlisting}
+
+Можно вывести план выполнения запроса
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+p = await cmpt_stmt.explain(5); p
+# [{'Plan': {'Node Type': 'Result',
+# 'Parallel Aware': False,
+# 'Startup Cost': 0.0,
+# 'Total Cost': 0.01,
+# 'Plan Rows': 1,
+# 'Plan Width': 8,
+# 'Output': ["'32'::double precision"]}}]
+p = await cmpt_stmt.explain(5, analyze=True); p
+# [{'Plan': {'Node Type': 'Result',
+# 'Parallel Aware': False,
+# 'Startup Cost': 0.0,
+# 'Total Cost': 0.01,
+# 'Plan Rows': 1,
+# 'Plan Width': 8,
+# 'Actual Startup Time': 0.001,
+# 'Actual Total Time': 0.001,
+# 'Actual Rows': 1,
+# 'Actual Loops': 1,
+# 'Output': ["'1.0715086071862673e+301'::double precision"]},
+# 'Planning Time': 0.065,
+# 'Triggers': [],
+# 'Execution Time': 0.026}]
+\end{lstlisting}
+
+Можно использовать \emph{транзакции}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> conn = await asyncpg.connect('...')
+>>> async with conn.transaction():
+        res = await conn.fetch('INSERT INTO tab VALUES (1, 2, 3)')
+>>> res
+\end{lstlisting}
+
+Еще пример на транзакции
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+async with conn.transaction():
+    res = await conn.fetch('''
+       SELECT passenger_name, contact_data ->> 'phone' AS phone
+       FROM tickets
+       LIMIT $1 
+    ''', 3)
+print(res)
+\end{lstlisting}
+
+Библиотека \texttt{asyncpg} поддерживает асинхронное итерирование с помощью \texttt{async for}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+async def iterate(conn: Connection):
+    async with conn.transaction():
+        async for record in conn.cursor('SELECT generate_series(0, 100)'):
+            print(record)
+\end{lstlisting}
+
+
+
+В случае когда используется связка \texttt{SQLAlchemy} и \texttt{asyncpg}, можно воспользоваться специальной библиотекой \texttt{asyncpgsa} \url{https://asyncpgsa.readthedocs.io/en/latest/}.
 
 Для работы с аналитической СУБД \texttt{Vertica} есть своя библиотека \texttt{vertica\_python}\footnote{Устанавливается как обычно с помощью менеджера пакетов \texttt{pip}: \texttt{pip install vertica-python}} \url{https://github.com/vertica/vertica-python}
 
@@ -3019,7 +3248,7 @@ with vertica_python.connect(**conn_info) as conn:
     cur = conn.cursor()
     cur.execute('SELECT NODE_NAME FROM V_MONITOR.CURRENT_SESSION')
     print('Client connects to primary node:', cur.fetchone()[0])
-    cur.execute('SELECT SET_LOAD_BALANCE_POLICY('ROUNDROBIN'))
+    cur.execute("SELECT SET_LOAD_BALANCE_POLICY('ROUNDROBIN')")
     
 with vertica_python.connect(**conn_info) as conn:
     cur = conn.cursor()
