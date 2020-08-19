@@ -40,6 +40,8 @@
 
 \noindent\emph{Интерквартильный размах} -- разность между третьим и первым квартилями, то есть $ x_{0,75} - x_{0,25} $. Интерквартильный размах является характеристикой разброса и является робастным аналогом дисперсии. Вместе, медиана и интерквартильный размах могут быть использованы вместо математического ожидания и дисперсии в случае распределений с большими выбросами.
 
+\noindent\emph{Web-сокет} -- это технология, позволяющая создавать интерактивное соединение для обмена сообщениями в режиме реального времени. Web-сокет в отличие от HTTP не нуждается в повторяющихся запросах к серверу. Сокет работает таким образом, что достаточно лишь один раз выполнить запрос, а потом ждать отклика. То есть можно спокойно слушать сервер, который отправит сообщения по мере готовности. Сокеты применяют приложениях, обрабатывающих информацию в <<реальном времени>> (IoT-приложения, чаты и пр.)
+
 \section{Теория алгоритмов и структуры данных}
 
 В \emph{теории сложности вычислений} широкое распространение получило обозначение <<\emph{О}-большое>>. Типичный результат выглядит следующим образом: <<данный алгоритм работает за время $ O(n^2 \log n) $>>, и его следует понимать как <<существует такая константа $ C > 0 $, что \emph{время работы} алгоритма в \emph{наихудшем} случае не превышает $ C\,n^2 \log n $, начиная с некоторого $ n $>>.
@@ -3033,7 +3035,223 @@ with psycopg2.connect('postgresql://postgres@localhost:5432/demo') as conn: # с
 
 Библиотека \texttt{asyncpg} предоставляет асинхронный API, предназначенный для работы совместно с \texttt{asyncio} -- библиотекой, используемой для написания конкурентного кода на Python.
 
-Замечания: ключевое слово \texttt{async} означает, что определенная далее функция является сопрограммой, т.е. асинхронна и должна выполняться особым образом, а ключевое слово \texttt{await} служит для синхронного выполнения сопрограмм. 
+Замечания: ключевое слово \texttt{async} означает, что определенная далее функция является сопрограммой, т.е. асинхронна и должна выполняться особым образом, а ключевое слово \texttt{await}\footnote{Запускает сопрограмму из асинхронного кода с явным переключением контекста} служит для синхронного выполнения сопрограмм.
+
+По рекомендациям разработчиков \texttt{asyncio}
+\begin{itemize}
+	\item следует использовать \texttt{asyncio.run()}, а цикл не нужен!,
+	
+	\item должна быть одно точка входа,
+	
+	\item следует использовать \texttt{async/await} везде,
+	
+	\item никогда не следует передавать ссылку на цикл
+\end{itemize}
+
+По рекомендациям разработчиков \texttt{asyncio} НЕ нужно использовать
+\begin{itemize}
+	\item декораторы \texttt{@coroutine},
+	
+	\item низкоуровневый API (\texttt{asyncio.Future}, \texttt{call\_soon()}, \texttt{call\_later()}, \texttt{event loop} etc)
+\end{itemize}
+
+
+Простой пример и сравнение
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import asyncio
+
+# ------- old style
+def get_text_oldschool():
+    '''
+    Вызов функции возвращает объект-генератор
+    '''
+    yield 'test string (old school)'
+    
+gto = get_text_oldschool() # переменная связывается с объектом-генератором
+gto.__next__() # 'test string (old school)'
+
+# ------- new style
+async def get_text_coro():
+    '''
+    Вызов функции возвращает объект-сопрограмму
+    '''
+    return 'test string (new style)'
+# запустить сопрограмму можно с помощью ключевого слова await
+await get_text_coro() # 'test string (new style)'
+\end{lstlisting}
+
+Еще один вариант запуска сопрограмм с помощью \texttt{asyncio.run()} (запускает цикл событий)
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import asyncio
+
+async def get_text(delay, text):
+    await asyncio.sleep(delay)
+    return text
+    
+async def say_text():
+    ''' Здесь задачи будут выполняться парраллельно'''
+    # создаем задачи и ставим их в очередь; они еще не выполняются
+    task1 = asyncio.create_task(get_text(1, 'hello'))
+    task2 = asyncio.create_task(get_text(1, 'world'))
+    # явно переключаем контекст и выполняем сопрограммы
+    await task1
+    await task2
+    return ', '.join([task1.result(), task2.result()])
+    
+result = asyncio.run(say_text()); result # 'hello, world'
+\end{lstlisting}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+# задачи выполнятюсят парраллельно!!!
+async def output(t):
+    return await asyncio.sleep(t, 'test message')
+    
+async def main():
+    tasks = [
+        asyncio.create_task(output(n))
+        for n in (2, 1, 3, 1)
+    ]
+    for task in asyncio.as_completed(tasks):
+         print(await task)
+\end{lstlisting}
+
+Ограничить время ожидания awaitable-объекта можно так
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+async def eternity():  # сопрограмма
+    try:
+        await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        print('I was cancelled')
+        raise # возбуждается исключение
+    print('Finished')  # не печатается
+    
+async def main():  # сопрограмма
+    try:
+        await asyncio.wait_for(eternity(), timeout=1.0)
+    except asyncio.TimeoutError:
+        print('Timeout')
+        
+asyncio.run(main())
+\end{lstlisting}
+
+Подождать выполнения awaitable-объектов можно так
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import asyncio
+
+async def delayed_res(delay):
+    return await asyncio.sleep(delay, f'test string: {delay}')
+    
+async def main():
+    tasks = [ # создаем задачи
+        delayed_res(i)
+        for i in range(1,10+1)
+    ]
+    for earliest in asyncio.as_completed(tasks):
+        res = await earliest # выполняем сопрограмму
+        print(res)
+        
+asyncio.run(main())
+\end{lstlisting}
+
+Можно запустить синхронный код в процессе/потоке
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import asyncio
+import concurrent
+
+async def main():
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ProcessPoolExecutor() as pool:
+        res = await loop.run_in_executor(pool, cpu_bound)
+        print('custom process pool', res)
+        
+asyncio.run(main())
+\end{lstlisting}
+
+Несколько задач сразу можно запустить так
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import asyncio
+
+async def main():
+    coros = (
+        some_async_coro(i)
+        for i in range(10)
+    )
+    results = await asyncio.gather(*coros) # << NB
+    
+asyncio.run(main())  # у приложения должна быть одна точка входа
+\end{lstlisting}
+
+В асинхронном программировании поддерживаются еще и \emph{асинхронные генераторы}, т.е. асинхронные функции, использующие ключевое слово \texttt{yield}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+async def ticker(delay, to):
+    ''' Асинхронный генератор'''
+    for i in range(to):
+        yield i
+        await asyncio.sleep(delay)
+        
+async def main():
+    async for i in ticker(1,10):
+        print(i)
+        
+asyncio.run(main())
+\end{lstlisting}
+
+В python 3.6+ поддерживаются все comprehensions
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+# их всех можно сочетать с for и if
+{ i async for i in agen() } # множество
+[ i async for i in agen() ] # список
+{ i : i**2 async for i in agen() } # словарь
+( i**2 async for i in agen()) # генераторное выражение
+\end{lstlisting}
+
+Пример использования асинхронного генератора
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+async def ticker(delay, to):
+    ''' Асинхронный генератор'''
+    for i in range(to):
+        yield i # <-
+        await asyncio.sleep(delay)
+        
+async def main():
+    results = [ # асинхронный генератор списка с двумя циклами
+        (i,j)
+        async for i in ticker(0.1, 5)
+            async for j in ticker(0.1, 5)
+        if not i % 2 and j % 2
+    ]
+    print(results)
+\end{lstlisting}
 
 Пример использования
 \begin{lstlisting}[
