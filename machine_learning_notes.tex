@@ -2966,6 +2966,131 @@ import re
 re.compile('y*?(\d{1,3}?)').search('xy1234z').groups()[0]  # '1'
 \end{lstlisting}
 
+\section{Асинхронное программирование в \texttt{Python}}
+
+\subsection{Библиотека \texttt{aiomisc}}
+
+Кроме библиотек \texttt{asyncio}, \texttt{asyncpg} и пр. есть еще одна очень полезная библиотека \texttt{aiomisc} \url{https://github.com/aiokitchen/aiomisc}. В числе прочего там есть такой полезный сервис как \texttt{MemoryTracer}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import asyncio
+import os
+from aiomisc import entrypoint
+from aiomisc.service import MemoryTracer
+
+async def main():
+    leaking = []
+    
+    while True:
+        leaking.append(os.urandom(128))
+        await asyncio.sleep(0)
+        
+with entrypoint(MemoryTracer(interval=1, top_results=5)) as loop:
+    loop.run_until_complete(main())
+\end{lstlisting}
+
+Еще один готовый сервис помогает профилировать приложение
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import asyncio
+import os
+import time
+from aiomisc import entrypoint
+from aiomisc.service import Profiler
+
+
+async def main():
+    for i in range(100):
+        time.sleep(0.01) # синхронная функция в асинхронном коде! Плохо
+
+
+with entrypoint(Profiler(interval=0.1, top_results=5)) as loop:
+    loop.run_until_complete(main())
+\end{lstlisting}
+
+Есть некоторые вещи, которые нельзя реализовать в асинхронном коде, поэтому приходится пользоваться \emph{потоками}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+>>> import asyncio, time, aiomisc
+
+>>> @aiomisc.threaded
+    def blocking_function():
+        ''' Блокирующая функция. '''
+        time.sleep(1)
+
+# НО производительность решения будет зависеть от пула потоков.
+# Если в пуле, скажем, 8 потоков, то значит одновременно смогут
+# выполниться только 8 запросов, а остальные запросы будут
+# вставать в очередь
+>>> async def main():
+        ''' Функции будут выполняться парарллельно. '''
+        await asyncio.gather( # в двух потоках
+            blocking_function(),
+            blocking_function()
+        )
+    
+>>> %%timeit # 1.02 s ± 3.82 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+    with aiomisc.entrypoint() as loop:
+        loop.run_until_complete(main())
+\end{lstlisting}
+
+Еще удобно работать с генераторами
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import aiomisc
+import asyncio
+
+
+@aiomisc.threaded_iterable(max_size=100)
+def blocking_reader():
+    ''' Синхронный генератор. '''
+    with open('/dev/urandom', 'r+') as fp:
+        mdt_hash = hashlib.md5()
+        while True:
+            md5_hash.update(fp.read(32))
+            yield md5_hash.hexdigest().encode()
+
+
+async def main():
+    reader, writer = await asyncio.open_connection('127.0.0.1', 2233)
+    async with blocking_reader() as gen: # асинхронный менеджер контекста нужен обязательно!!!
+        async for line, digest in gen:
+            writer.write(digest)
+            writer.write(b'\t')
+            writer.write(line)
+
+
+with aiomisc.entrypoint() as loop:
+    loop.run_until_complete(main())
+\end{lstlisting}
+
+Можно создать \emph{отдельный} поток, который <<умирает>> вместе с декорируемой функцией (например, можно писать логи в отдельном потоке)
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+queue = Queue(max_size=100)
+
+@aiomisc.threaded_separate
+def blocking_reader(fname):
+    with open('/dev/urandom', 'r+') as fp:
+        while True:
+            mdt_hash.update(fp.read(32))
+            queue.put(md5_hash.hexdigest().encode())
+\end{lstlisting}
+
+Декораторы \verb|@threaded| делают из обычной функции \emph{awaitable-объект}. Нельзя выполнить функцию, обернутую \verb|@threaded| из функции, обернутой \verb|@threaded|.
+
+
 \section{Работа с базами данных в \texttt{Python}}
 
 Для работы с \texttt{PostgreSQL} из-под \texttt{Python}, как правило, используется драйвер \texttt{psycopg2}. Можно использовать еще и \texttt{sqlalchemy}. Согласно спецификации DB-API 2.0, после создания объекта соединения необходимо создать объект-курсор. Все дальнейшие запросы должны производиться через этот объект.
