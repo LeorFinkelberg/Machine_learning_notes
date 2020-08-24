@@ -2400,7 +2400,153 @@ docker run -d --name nifi -p 8080:8080 apache/nifi:latest
 
 
 
-\section{Приемы работы с пакетом \texttt{Vowpal Wabbit}}
+\section{Приемы работы с библиотекой \texttt{Vowpal Wabbit}}
+
+\texttt{Vowpal Wabbit} -- библиотека с открытым исходным кодом, ориентированная на крупно-масштабные онлайн\footnote{В компьютерных науках онлайновое машинное обучение (online machine learning \url{https://en.wikipedia.org/wiki/Online_machine_learning}) -- это метод машинного обучения, при котором данные становятся доступными не сразу, а постепенно в определенном порядке и используются для обновления наилучшего предиктора для будущих данных на каждом шаге. В то время как пакетное машинное обучение, возвращает прогноз на основе всего набора имеющихся данных. Онлайновое машинное обучение это распространенный способ, используемый там, где обучение по всему набору данных неосуществимо с точки зрения объема вычислений. Эта техника также используется в ситуациях, когда требуется, чтобы алгоритм динамически адаптировался к новым паттернам в данных}-задачи машинного обучения, в основе которых лежат так называемые алгоритмы, работающие во внешней памяти (их еще называют \emph{внеядерными} (out-of-core) алгоритмами). 
+
+\texttt{Vowpal Wabbit}:
+\begin{itemize}
+	\item очень качественная реализация стохастического градиентного спуска для линейных моделей,
+	
+	\item считывает данные с диска по одному прецеденту и делает шаг только по нему, нет необходимости хранить выборку в памяти,
+	
+	\item может быть запущен на кластере,
+	
+	\item нормализация признаков, взвешивание объектов, адаптивный градиентный шаг,
+	
+	\item матричное разложение, тематическое моделирование, активное обучение, обучение с подкреплением,
+	
+	\item разнообразие методов оптимизации: сопряженные градиенты, квазиньютоновские методы (L-DBGS).
+\end{itemize}
+
+
+Внеядерные алгоритмы машинного обучения не требуют загрузки всех данных в память.
+
+Пример. Пусть выборка записана в файле \texttt{train.txt}. Тогда
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+# обучение
+vw -d train.txt --passes 10 -c -f model.vw
+\end{lstlisting}
+где
+
+\texttt{-d filename} -- имя входного файла,
+
+\verb|--passes n| -- количество проходов по выборке,
+
+\verb|-c| -- включает кэширование, позволяет ускорить все проходы после первого,
+
+\verb|-f filename| -- имя файла, в который сохраняется модель (здесь \texttt{f} от final).
+
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+# прогноз
+vw -d test.txt -i model.vw -t -p predictions.txt
+\end{lstlisting}
+где
+
+\texttt{-d filename} -- имя входного файла,
+
+\texttt{-i filename} -- имя файла с моделью,
+
+\texttt{-t} -- режим применения существующей модели,
+
+\texttt{-p filename} -- имя файла с прогнозами.
+
+Можно работать из-под Python
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+from vowpalwabbit import pyvw
+
+model = pyvw.vw()
+
+train_examples = [
+    "0 | price:.23 sqft:.25 age:.05 2006",
+    "1 | price:.18 sqft:.15 age:.35 1976",
+    "0 | price:.53 sqft:.32 age:.87 1924",
+]
+
+for example in train_examples:
+    model.learn(example)
+    
+test_example = "| price:.46 sqft:.4 age:.10 1924"
+
+prediction = model.predict(test_example); prediction # 0.0
+\end{lstlisting}
+
+
+\section{Приемы работы с \texttt{Microsoft Machine Learning for Apache Spark}}
+
+\href{https://github.com/Azure/mmlspark}{Microsoft Machine Learning for Apache Spark} (MMLSpark) -- это экосистема инструментов, расширяющих возможности вычислительной платформы Apache Spark в нескольких новых направлениях.
+
+Установить MMLSpark можно разными способами (см.~\url{https://github.com/Azure/mmlspark}), например, так расширяется библиотека \texttt{pyspark} из-под Python
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import pyspark
+spark = (pyspark.sql.SparkSession.builder.appName('test spark').
+             config('spark.jars.packages', 'com.microsoft.ml.spark:mmlspark_2.11:1.0.0-rc2').
+             config('spark.jars.repositories', 'https://mmlspark.azureedge.net/maven').
+             getOrCreate()
+import mmlspark
+\end{lstlisting}
+
+\href{https://github.com/Azure/mmlspark/blob/master/notebooks/samples/HyperParameterTuning%20-%20Fighting%20Breast%20Cancer.ipynb}{Пример} использования библиотеки MMLSpark для решения задачи гиперпараметрической оптимизации
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import pandas as pd
+data = spark.read.parquet("wasbs://publicwasb@mmlspark.blob.core.windows.net/BreastCancer.parquet")
+tune, test = data.randomSplit([0.80, 0.20])
+tune.limit(10).toPandas()
+
+
+from mmlspark.automl import TuneHyperparameters
+from mmlspark.train import TrainClassifier
+from pyspark.ml.classification import LogisticRegression, RandomForestClassifier, GBTClassifier
+logReg = LogisticRegression()
+randForest = RandomForestClassifier()
+gbt = GBTClassifier()
+smlmodels = [logReg, randForest, gbt]
+mmlmodels = [TrainClassifier(model=model, labelCol="Label") for model in smlmodels]
+
+from mmlspark.automl import *
+
+paramBuilder = \
+    HyperparamBuilder() \
+        .addHyperparam(logReg, logReg.regParam, RangeHyperParam(0.1, 0.3)) \
+        .addHyperparam(randForest, randForest.numTrees, DiscreteHyperParam([5,10])) \
+        .addHyperparam(randForest, randForest.maxDepth, DiscreteHyperParam([3,5])) \
+        .addHyperparam(gbt, gbt.maxBins, RangeHyperParam(8,16)) \
+        .addHyperparam(gbt, gbt.maxDepth, DiscreteHyperParam([3,5]))
+searchSpace = paramBuilder.build()
+# The search space is a list of params to tuples of estimator and hyperparam
+print(searchSpace)
+randomSpace = RandomSpace(searchSpace)
+
+
+bestModel = TuneHyperparameters(
+                evaluationMetric="accuracy", models=mmlmodels, numFolds=2,
+                numRuns=len(mmlmodels) * 2, parallelism=1,
+                paramSpace=randomSpace.space(), seed=0).fit(tune)
+
+print(bestModel.getBestModelInfo())
+print(bestModel.getBestModel())
+
+from mmlspark.train import ComputeModelStatistics
+prediction = bestModel.transform(test)
+metrics = ComputeModelStatistics().transform(prediction)
+metrics.limit(10).toPandas()
+\end{lstlisting}
+
 
 \section{Приемы работы с библиотекой \texttt{BeautifulSoup}}
 
