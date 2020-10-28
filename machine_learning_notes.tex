@@ -378,7 +378,25 @@ $$
 	p(x, y | z) = p(x | z)p(y | z).
 \end{align*}
 
+\subsection{Регистрация пользовательских функций выхода из приложения}
 
+Удобно использовать встроенный модуль \texttt{atexit} для регистрации пользовательских функций, которые вызываются при выходе из приложения. Например
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import atexit
+
+
+def hello_fun():
+    print('Hello message')
+
+def exit_fun():
+    print('New exit message')
+
+atexit.register(exit_fun)
+hello_fun()
+\end{lstlisting}
 
 
 \section{Глубокое обучение}
@@ -3143,6 +3161,69 @@ df.apply(lambda col: col.value_counts().index[0])
 	\caption{ Результат применения функции \texttt{color\_code\_freq\_cat} }\label{fig:color-code-freq-cat}
 \end{figure}
 
+
+\subsection{Заполнить пропущенные значения средними по группе}
+
+Часто возникает задача заполнить отсутствующие значения групповыми средними. Сделать это можно с помощью метода \texttt{transform}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import pandas as pd
+from pandas import DataFrame, Series
+
+seed = 123
+df = DataFrame({
+	'package_name' : np.array(['Ansys',
+	'Nastran',
+	'Comsol',
+	'Abaqus'])[np.random.RandomState(seed).randint(4, size=5)],
+	'comp_effect' : np.abs(100*np.random.RandomState(seed).randn(5))
+})
+data.iloc[[1, 3], 1] = np.nan
+# df =
+#  package_name  comp_effect
+#0       Comsol   108.563060
+#1      Nastran          NaN
+#2       Comsol    28.297850
+#3       Comsol          NaN
+#4        Ansys    57.860025
+
+# следует указывать столбец, по которому будет выполняться группировка
+# и столбец, для которого будут вычисляться средние по группе
+data['comp_effect'] = (
+    data[['package_name', 'comp_effect']].groupby('package_name').
+        transform(lambda g: g.fillna(g.mean()))
+)
+\end{lstlisting}
+
+Для сравнения эту же задачу можно было бы решить с помощью более общего метода \texttt{apply}, но код будет значительно сложнее
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+...
+# подавить создание иерархического индекса можно с помощью `group_keys`
+data['comp_effect'] = (
+    data[['package_name', 'comp_effect']].groupby('key2', group_keys=False).
+        apply(lambda g: g.fillna(g.mean())).
+            drop(['key2'], axis=1).  # удалить столбец группировки
+                sort_index()         # отсортировать
+)
+\end{lstlisting}
+или так
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+...
+# в apply можно указать интересующий столбец 
+data['comp_effect'] = (
+    data.groupby('key2', group_keys=False).
+        apply(lambda g: g['key1'].fillna(g['key1'].mean())).
+            sort_index()
+)
+\end{lstlisting}
 
 \section{Приемы работы с библиотекой \texttt{Plotly}}
 
