@@ -21,7 +21,7 @@
 Здесь приводятся заметки по некоторым вопросам, касающимся машинного обучения, анализа данных, программирования на языках \texttt{Python}, \texttt{R} и прочим сопряженным вопросам так или иначе, затрагивающим работу с данными.
 
 
-%\shorttableofcontents{Краткое содержание}{1}
+\shorttableofcontents{Краткое содержание}{1}
 
 
 \tableofcontents
@@ -1871,6 +1871,117 @@ print(acts[2](2))  # вернет 2**2
 \remark{
 Значения аргументов по умолчанию для избежания странного поведения функции должны ссылаться на \emph{объекты неизменяемого типа данных}
 }
+
+\section{Генераторы, сопрограммы в \texttt{Python}}
+
+Цепочки вычислений лучше строить на базе генераторов или сопрограмм. Например простую цепочку преобразований можно построить и с помощью функции \texttt{reduce} (но лучше так не делать!)
+\begin{lstlisting}[
+style = ironpython,
+title = {\sffamily Так лучше не делать!},
+numbers = none	
+]
+from functools import reduce
+
+test_str = 'python fortran matlab'
+pipe_func = (
+    str.split,  # разбивает переданную строку по пробелу и возвращает список
+    lambda lst: (elem.upper() for elem in lst)  # каждую выделенную на предыдущем этапе
+                                                # строку приводит к верхнему регистру
+)
+
+main_red = reduce(
+    lambda args, f: f(args),
+    pipe_func,
+    test_str
+)
+
+for elem in main_red:
+    print(elem)
+# PYTHON
+# FORTRAN
+# MATLAB
+\end{lstlisting}
+
+Для данной задачи конвейер преобразований на базе генераторов может выглядеть так
+\begin{lstlisting}[
+style = ironpython,
+title = {\sffamily Правильный вариант решения задачи о конвейерах преобразований},
+numbers = none	
+]
+def gen_split(s: str):
+    '''
+    Функция-генератор
+    '''
+    for elem in s.split():
+        yield elem
+        
+def gen_upper(sub_str: str):
+    '''
+    Функция-генератор
+    '''
+    for elem in sub_str:
+        yield elem.upper()
+        
+main_gen = gen_upper(gen_split(test_str))  # объект-генератор
+for elem in main_gen:
+    print(elem)
+# PYTHON
+# FORTRAN
+# MATLAB
+\end{lstlisting}
+
+\section{Библиотека \texttt{functools}}
+
+
+
+\subsection{Каррированные функции с помощью \texttt{functools.partial}}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from functools import partial
+
+# инициализируем частичную функцию списком
+part_f = partial(lambda lst, transform: [transform(elem) for elem in lst],
+                 lst=['python', 'fortran'])
+# передает преобразование
+part_f(transform=str.upper)  # ['PYTHON', 'FORTRAN']
+\end{lstlisting}
+
+Иногда бывает удобно использовать метод \texttt{partialmethod}
+\begin{lstlisting}[
+style = ironpython,
+emph = {__init__, set_live, get_live, __call__},
+numbers = none	
+]
+from functools import partialmethod
+
+class Live:
+    def __init__(self):
+        self._live = False
+        
+    def set_live(self, state: bool):
+        self._live = state
+        
+    def get_live(self):
+        return self._live
+        
+    def __call__(self):
+        return self.get_live()
+    
+    # атрибуты класса    
+    set_alive = partialmethod(set_live, True) # замораживает метод set_live() со значением True
+    set_dead = partialmethod(set_live, False) # замораживает метод set_live() со значением False
+    
+live = Live()
+live.set_alive()  # изменит значение атрибута self._live на True
+                  # метод set_alive() вызовет метод set_live(True)
+print(live())  # True: вызовет __call__, а тот в свою очередь get_live()
+# разумеется можно вызвать метод set_live(False) и напрямую
+\end{lstlisting}
+
+
 
 \section{Калибровка классификаторов}
 
