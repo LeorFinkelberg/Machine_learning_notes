@@ -2832,6 +2832,120 @@ yj.fit_transform(data_log)  # вернет новое представление
 Преобразование Бокса-Кокса требует, чтобы значения набора данных были строго положительными, в то время как преобразование Йео-Джонсона может работать как с положительными, так и с отрицательными значениями
 }
 
+
+\section{Кодирование признаков}
+
+Полезная статья про кодировщики и различные стратегии валидации \url{https://towardsdatascience.com/benchmarking-categorical-encoders-9c322bd77ee8}.
+
+Можно использовать готовые алгоритмы кодирования, реализованные в библиотеке\\ \texttt{category\_encoders} \url{https://pypi.org/project/category-encoders/}\footnote{Установить можно как обычно: \texttt{pip install category-encoders}}
+
+Категориальные признаки можно разделить на \emph{порядковые признаки} (например, <<медлено>>, <<быстро>>, <<быстрее>> и т.д.) и \emph{номинальные признаки} (<<кошки>>, <<собаки>> и т.д.).
+
+Основные приемы кодирования категориальных признаков:
+\begin{itemize}
+	\item для порядковых признаков
+	\begin{itemize}
+		\item \emph{пользовательское отображение}, которое учитывает определенный порядок (соотношение) категорий, например, \verb|{"cold" : 0, "warm" : 1, "hot" : 2}|: класс \texttt{LabelEncoder} следует применять только (!) для \emph{целевого вектора}, для которого порядок меток не имеет никакого значения; если выполнить кодировку порядкового признака с помощью \texttt{LabelEncoder}, то алгоритм будет предполагать, что между категориями существует порядковая зависимость, то есть их можно как-то отсортировать, а это неверно! \cite[151]{raschka:2019}
+	\end{itemize}
+
+    \item для именных признаков
+    \begin{itemize}
+    	\item \emph{частотное кодирование}: например, с помощью \texttt{category\_encoder.CountEncoder} (затем, разумеется, нужно число элементов в категории разделить на число строк в наборе данных); можно реализовать свой собственный кодировщик 
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+train_nominal_freq_enc = train_nominal.copy()
+fq = train_nominal.groupby("col_nominal_name").size()/train_nominal.shape[0]
+train_nominal_freq_enc["col_nominal_name"] =
+    train_nominal_freq_enc["col_nominal_name"].map(fq)
+\end{lstlisting}
+
+    \item \emph{кодирование с одним активным состоянием} (еще говорят унитарное кодирование): легко реализовать с помощью \\ \texttt{sklearn.preprocessing.OneHotEncoder} или \\ с помощью \texttt{pd.get\_dummies(df, drop\_first=True)} (параметр \texttt{drop\_first=True} нужен для того, чтобы сократить взаимосвязь между признаками, полученными с помощью техники кодирования с одним активным состоянием, так как унитарное кодирование привносит мультиколлиниарность, что может приводить к появлению неустойчивых оценок \cite[153]{raschka:2019}),
+    
+    \item \emph{M-вероятностная оценка правдоподобия} (другие варианты: аддитивное сглаживание; кодирование сглаженным средним): можно использовать \\ класс \texttt{category\_encoders.m\_estimate.MEstimateEncoder}. Каждая категория категориального признака кодируются по следующей формуле
+    \begin{align*}
+        e_k = \dfrac{ s_k^t + m\, \dfrac{s^t}{n} }{c_k + m},\ (k = 1,\ldots, K),
+    \end{align*}
+    где $ s_k^t $ -- сумма значений целевого вектора для $ k $-ой категории; $ m $ -- степень регуляризации; $ n $ -- длина целевого вектора (число строк в наборе данных); $ c_k $ -- размер $ k $-ой категории (число экземпляров $ k $-ой категории); $ K $ -- число категорий (уникальных значений) категориального признака.
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from category_encoders.m_estimate import MEstimateEncoder
+
+# здесь m -- это степень регуляризации
+me_enc = MEstimateEncoder(m=50)  # рекомендуемые значения для m = [1, 100]
+
+data_mEst_enc = data.copy()
+data_mEst_enc["col3"] = me_enc.fit_transform(
+    data_mEst_enc.loc[:, "col3"],
+    data_mEst_enc.loc[:, "target"]
+)
+\end{lstlisting}
+
+    \item \emph{взвешенное суждение} (Weight of Evidence \url{https://contrib.scikit-learn.org/category_encoders/woe.html}): чаще всего применяется в кридитном скоринге.
+    
+    \item \emph{CatBoost-кодировщик}: можно использовать готовый класс \texttt{CatBoostEncoder} \url{https://contrib.scikit-learn.org/category_encoders/catboost.html}\\ из библиотеки \texttt{category\_encoders}; этот кодировщик предназначен для преодоления проблем утечки данных, присущих кодировщику \texttt{Leave-one-out Encoder} (LOO); чтобы предотвратить переобучение, процесс кодирования повторяется несколько раз для перетасованных версий набора данных, а результаты усредняются.
+    \end{itemize}
+\end{itemize}
+
+Удобно использовать трансформеры столбцов
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from sklearn.compose import make_column_transformer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.pipeline import make_pipeline
+from category_encoders.cat_boost import CatBoostEncoder
+
+col_trans = make_column_transformer(
+    (OneHotEncoder(sparse=False), ["col2", "col10"]),
+    (CatBoostEncoder(), ["col20"])
+)
+
+gbm = GradientBoostingRegressor()
+gbm_pipeline = make_pipeline(col_trans, gbm)
+
+gbm_pipeline.fit(X_train, y_train)
+gbm_pred = gbm_pipeline.predict(X_test)
+\end{lstlisting}
+
+Что касается стратегий валидации, то можно выделить 3 основные:
+\begin{itemize}
+	\item None Validation: очень грубо,
+	
+	\item Single Validation: что-то среднее между None Validation и Double Validation,
+	
+	\item Double Validation: очень медленно.
+\end{itemize}
+
+\vspace*{2mm}
+Стратегия для одиночной валидации:
+\begin{enumerate}
+	\item Разбиваем имеющийся набор данных на обучение и тест,
+	
+	\item Обучающий набор данных разбиваем на несколько фолдов,
+	
+	\item Каждый фолд кодируем своим кодировщиком (т.е. кодировщиков будет столько, сколько было фолдов),
+	
+	\item На каждом закодированном фолде обучаем свою модель (моделей столько, сколько было фолдов),
+	
+	\item Кодируем тестовый набор данных теми же кодировщиками, которые мы использовали на этапе обучения (т.е. несколько представлений тестового набора данных),
+	
+	\item на каждом закодированном тестовом представлении делаем прогноз с помощью моделей, обученных на соответствующих закодированных данных обучающего набора,
+	
+	\item для получения финального прогноза усредняем прогнозы моделей.
+\end{enumerate}
+
+
+
+
+\section{Машинное обучение с AutoML}
+
+
+
 \section{Хранилища данных. DWH}
 
 Хранилище данных (Data WareHouse, DWH) -- предметно-ориентированная информационная база данных, специально разработанная и предназначенная для подготовки отчетов и безнес-анализа с целью поддержки принятия решений в организации. Строится на основе систем управления базами данных и систем поддержки принятия решений. Данные, поступающие в хранилище данных, как правило, доступны только для чтения.
@@ -4449,6 +4563,8 @@ g.V(Bindings.of('id',v1)).addE('knows').to(v2).property('weight',0.75).iterate()
 	\bibitem{albon:2019}{\emph{Элбон К.} Машинное обучение с использованием Python. Сборник рецептов. -- СПб.: БХВ-Петербург, 2019. -- 384 с.}
 	
 	\bibitem{karau:2018}{\emph{Карау Х.}, \emph{Уоррен Р.} Эффективный Spark. Масштабирование и оптимизация. -- СПб. Питер, 2018. -- 352 с.}
+	
+	\bibitem{raschka:2019}{\emph{Рашка С.}, \emph{Мирджалили В.} Python и машинное обучение: машинное и глубокое обучение с использованием Python, scikit-learn и TensorFlow. -- СПб.: ООО <<Диалектика>>, 2019. -- 656 с.}
 \end{thebibliography}
 
 \end{document}
