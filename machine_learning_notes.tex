@@ -208,19 +208,19 @@ xgboost.plot_importance(model)
 
 \begin{figure}[h]
 	\centering
-	\includegraphics[scale=0.75]{figures/xgboost.plot.pdf}
+	\includegraphics[scale=0.75]{figures/xgboost_plot.pdf}
 	\caption{График важности признаков \lstinline{xgboost.plot_importance(model)},\\построенный с помощью пакета \texttt{xgboost} }\label{fig:xgboost_plot}
 \end{figure}
 
 \begin{figure}[h]
 	\centering
-	\includegraphics[scale=0.75]{figures/xgboost.plot.cover.pdf}
+	\includegraphics[scale=0.75]{figures/xgboost_plot_cover.pdf}
 	\caption{График важности признаков \lstinline{xgboost.plot_importance(model, importance_type='cover')},\\построенный с помощью пакета \texttt{xgboost} }\label{fig:xgboost_plot_cover}
 \end{figure}
 
 \begin{figure}[h]
 	\centering
-	\includegraphics[scale=0.75]{figures/xgboost.plot.gain.pdf}
+	\includegraphics[scale=0.75]{figures/xgboost_plot_gain.pdf}
 	\caption{График важности признаков \lstinline{xgboost.plot_importance(model, importance_type='gain')},\\построенный с помощью пакета \texttt{xgboost} }\label{fig:xgboost_plot_gain}
 \end{figure}
 
@@ -2592,7 +2592,7 @@ plt.legend()
 
 Установить библиотеку можно с помощью менеджера пакетов \texttt{conda}
 \begin{lstlisting}[
-style = cmd,
+style = bash,
 numbers = none
 ]
 conda install -c conda-forge fbprophet
@@ -2666,7 +2666,7 @@ a = add_changepoints_to_plot(fig.gca(), model, forecast)
 \begin{figure}[h]
 	\centering
 	\includegraphics[scale=0.65]{figures/prophet_test.pdf}
-	\caption{Пример использования библиотеки \texttt{fbprophet}}}\label{fig:prophet_test}
+	\caption{Пример использования библиотеки \texttt{fbprophet}}\label{fig:prophet_test}
 \end{figure}
 
 С помощью библиотеки \texttt{Prophet} можно учитывать эффекты <<праздников>>. Под термином <<праздник>> здесь понимается как <<настоящие>> официальные праздничные и выходные дни (например, Новый Год, Рождество и пр.), так и другие события, во время которых свойства моделируемой зависимой переменной существенно изменяются (спортивные или культурные мероприятия, природные явления и пр.).
@@ -3524,7 +3524,7 @@ plot(go.Figure(data=[
 По этой причине был предложен \emph{максимальный информационный коэффициент} (MIC). Формально MIC эквивалентен коэффициенту детерминации $ R^2 $ и принимает значения от 0 (статистическая независимость) до 1 (бесшумная функциональная связь)
 \begin{align*}
 	MIC(x, y) = \max\limits_{x,y < B}\ \dfrac{I(x, y)}{\log_2 \min (x, y)}.
-\end{algin*}
+\end{align*}
 
 В числителе стоит \emph{взаимная информация} между переменными $ x $ и $ y $
 $$
@@ -3929,7 +3929,7 @@ numbers = none
             blocking_function()
         )
     
->>> %%timeit # 1.02 s ± 3.82 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+    %%timeit # 1.02 s +/- 3.82 ms per loop (mean +/- std. dev. of 7 runs, 1 loop each)
     with aiomisc.entrypoint() as loop:
         loop.run_until_complete(main())
 \end{lstlisting}
@@ -4588,7 +4588,7 @@ g.V(Bindings.of('id',v1)).addE('knows').to(v2).property('weight',0.75).iterate()
 
 % Источники в "Газовой промышленности" нумеруются по мере упоминания 
 \begin{thebibliography}{99}\addcontentsline{toc}{section}{Список литературы}
-	\bibitem{lutz:learningpython-2011}{{\emph{Лутц М.} Изучаем Python, 4-е издание. -- Пер. с англ. -- СПб.: Символ-Плюс, 2011. -- 1280~с. }
+	\bibitem{lutz:learningpython-2011}{\emph{Лутц М.} Изучаем Python, 4-е издание. -- Пер. с англ. -- СПб.: Символ-Плюс, 2011. -- 1280~с. }
 		
 	\bibitem{beazley:python-2010}{\emph{Бизли Д.} Python. Подробный справочник. -- Пер. с англ. -- СПб.: Символ-Плюс, 2010. -- 864~с. }
 	
