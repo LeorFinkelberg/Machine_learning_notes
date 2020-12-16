@@ -4596,6 +4596,159 @@ pip install -e .
 Это нужно, если требуется править исходники пакета, который устанавливается.
 
 
+\section{Приемы работы с \texttt{flake8}}
+
+\texttt{flake8} -- инструмент, позволяющий выявить стилистические ошибки в коде.
+
+Установаить \texttt{flake8} можно как обычно
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install flake8
+\end{lstlisting} 
+
+Можно передать путь до рабочей директории или имя конкретного файла
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+flake8 work_dir
+flake8 file_name.py
+\end{lstlisting}
+
+Еще Flake8 поддерживает pre-commit хуки для Git и Mercurial. Эти хуки позволяют, например, не допускать создание коммита при нарушении каких-либо правил оформления. 
+
+Установить хук для Git 
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+flake8 --install-hook git
+\end{lstlisting}
+
+Настроить сам Git, чтобы он учитывал правила Flake8
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+git config --bool flake8.strict true
+\end{lstlisting}
+
+Управлять поведением Flake8 можно с помощью конфигурационных файлов (\texttt{setup.cfg}, \texttt{tox.ini}, \texttt{.flake8}). Например
+\begin{lstlisting}[
+title = {\sffamily .flake8},
+style = bash,
+numbers = none	
+]
+[flake8]
+  ignore =
+    # F812: list comprehension redefines ...
+    F812,
+    D203
+    # H101: Use TODO(NAME)
+    H101,
+    H301
+  exclude = .git, __pycache__, build, old, dist, docs/conf.py
+\end{lstlisting}
+
+
+\section{Особенности работы с форматером \texttt{black}}
+
+Black \url{https://pypi.org/project/black/} -- инструмент анализа и автоматического форматирования кода. Следит за файлами и форматирует только те файлы, которые были изменены. 
+
+Можно запретить форматирование отдельных блоков кода с помощью \verb|# fmt: on| и \verb|fmt: off|, обзначающие начало и конец блока.
+
+Установить Black можно так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install black
+\end{lstlisting}
+
+Поведением Black удобно управлять с помощью конфигурационного toml-файла\footnote{TOML -- формат конфигурационных файлов}
+\begin{lstlisting}[
+title = {\sffamily pyproject.toml},
+style = bash,
+numbers = none	
+]
+[tool.black]
+line-length = 80
+target-version = ['py37']
+include = '\.pyi?$'
+exclude = '''
+(
+    \(
+          \.eggs
+        | \.git 
+        | \.hg
+        | \.mypy_cache
+        | \.tox
+        | \.venv
+        | build
+        | dist
+    \)
+    | foo.py
+)
+'''
+\end{lstlisting}
+
+Black будет искать файл \texttt{pyproject.toml}, начиная с текущего рабочего каталога и заканчивая корнем файловой системы, если придется.
+
+Если вызвать \texttt{black} с флагом \verb|-v| (или \verb|--verbose|), то, при условии, что файл \texttt{pyproject.toml} найдется, в терминал будет выведен путь до конфигурационного файла.
+
+Для работы с различными хуками удобно пользоваться специальным менеджером хуков \texttt{pre-commit} \url{https://pre-commit.com}. Нужно просто указать список хуков, а \texttt{pre-commit} будет запускать хук перед каждым коммитом.
+
+Остается только добавить конфигурационный файл \texttt{.pre-commit-config.yaml} в рабочий локальный git-репозиторий
+\begin{lstlisting}[
+title  = {\sffamily .pre-commit-config.yaml},
+style = bash,
+numbers = none	
+]
+repos:
+  - repo: https://github.com/psf/black
+     rev: 19.10b0 # Replace by any tag/version: https://github.com/psf/black/tags
+     hooks:
+       - id: black
+          language_version: python3 # Should be a command that runs python3.6+
+\end{lstlisting}
+
+А затем запустить установку хуков
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pre-commit install
+\end{lstlisting}
+
+Теперь \texttt{pre-commit} будет автоматически запускаться каждый раз при создании коммита.
+
+Перед фиксацией изменений можно на всякий случай вызвать
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pre-commit run --all-files
+# вывод
+[INFO] Initializing environment for https://github.com/psf/black.
+[INFO] Installing environment for https://github.com/psf/black.
+[INFO] Once installed this environment will be reused.
+[INFO] This may take a few minutes...
+black....................................................................Failed
+- hook id: black
+- files were modified by this hook
+
+reformatted /Users/leor.finkelberg/Python_projects/termostablizator/css.py
+reformatted /Users/leor.finkelberg/Python_projects/termostablizator/sou.py
+All done!
+2 files reformatted.
+\end{lstlisting}
+
+Здесь говориться, что отработал хук \texttt{black} и отформатировал 2 файла.
+
+
+
 \listoffigures\addcontentsline{toc}{section}{Список иллюстраций}
 
 % Источники в "Газовой промышленности" нумеруются по мере упоминания 
