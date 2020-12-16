@@ -4583,6 +4583,18 @@ g.V(Bindings.of('id',v1)).addE('knows').to(v2).property('weight',0.75).iterate()
 
 
 
+\section{Особенности использования менеджера пакетов \texttt{pip}}
+
+Чтобы установить пакет в редактируемом режиме в текущую директорию следует использовать флаг \verb*|-e|
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+pip install -e .
+\end{lstlisting}
+
+Это нужно, если требуется править исходники пакета, который устанавливается.
+
 
 \listoffigures\addcontentsline{toc}{section}{Список иллюстраций}
 
