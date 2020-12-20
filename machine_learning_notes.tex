@@ -50,6 +50,887 @@
 
 Теория сложности вычислений по определению считает, что алгоритм, работающий за время $ O(n^2 \log n) $ лучше алгоритма с временем работы $ O(n^3) $, и в подавляющем большинстве случаев это отражает реально существующую на практике ситуацию.
 
+\section{Настройка непрерывной интеграции (CI) на GitHub Actions}
+
+\subsection{Порядок работы с pull-request}
+
+Кратко о pull-request. Pull-request (запрос на изменения) -- запрос к управляющему каким-либо репозиторием (человеку, группе или вообще роботу) на выполнение изменений из вашего репозитория (и указанной ветки).
+
+Порядок выполнения pull-request на свой проект:
+\begin{itemize}
+	\item Делаем форк репозитория,
+	
+	\item Через свой собственный GitHub-профиль клонируем репозиторий на локальную машину,
+	
+	\item Создаем новую ветку под изменения,
+	
+	\item Вносим изменения из-под новой ветки,
+	
+	\item Делаем \texttt{git push origin my\_branch},
+	
+	\item На странице GitHub репозитория выбираем новую ветку и нажимаем кнопку <<Compare \& pull request>>; появится форма, в которой можно описать коммит и и добавить комментарий; затем нажимаем <<Create pull request>>,
+	
+	\item На вкладке <<Pull requests>> появится диалоговая форма с возможностью сделать <<Merge pull request>>, просмотреть коммит и пр.
+\end{itemize}
+
+Можно выполнить <<Merge pull request>> через командную строку
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+# Step 1: From your project repository, bring in the changes and test.
+git fetch origin
+git checkout -b correct-description-readme origin/correct-description-readme
+git merge main
+
+# Step 2: Merge the changes and update on GitHub.
+git checkout main
+git merge --no-ff correct-description-readme
+git push origin main
+\end{lstlisting}
+
+После удачного <<Merge pull request>> лучше удалить соответствующие локальную и удаленную (remote) ветки
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+# удаление локальной ветки
+git branch -d <branch_name>
+# удаление удаленной ветки
+git push origin --delete <branch_name>
+\end{lstlisting}
+
+
+
+\subsection{Конфигурационные файлы для непрерывной интеграции}
+
+Существуют различные инструменты непрерывной интеграции (continuous integration, CI). Вот некоторые из них
+\begin{itemize}
+	\item GitHub CI,
+	
+	\item CircleCI,
+	
+	\item Travis CI,
+	
+	\item Buildkite и т.д.
+\end{itemize}
+
+В качестве пример рассмотрим настройку непрерывной интеграции с помощью GitHub Actions.
+
+Простой пример \texttt{ci.yaml} 
+\begin{lstlisting}[
+title = {\sffamily .github/workflows/ci.yaml},
+style = bash,
+numbers = none	
+]
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Python package
+
+on:
+push:
+branches: [ master ]
+pull_request:
+branches: [ master ]
+jobs:
+build:
+runs-on: ubuntu-latest
+strategy:
+matrix:
+python-version: [3.6, 3.7, 3.8]
+steps:
+- uses: actions/checkout@v2
+- name: Set up Python
+uses: actions/setup-python@v2
+with:
+python-version: ${{ matrix.python-version }}
+- name: Cache pip
+uses: actions/cache@v1
+with:
+path: ~/.cache/pip # This path is specific to Ubuntu
+# Look to see if there is a cache hit for the corresponding requirements file
+key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+restore-keys: |
+${{ runner.os }}-pip-
+${{ runner.os }}-
+# You can test your matrix by printing the current Python version
+- name: Display Python version
+run: python -c "import sys; print(sys.version)"
+- name: Install dependencies
+run: |
+python -m pip install --upgrade pip
+pip install Cython
+pip install -r requirements.txt
+pip install pycocotools
+pip install shapely
+pip install black flake8 mypy pytest hypothesis isort pylint
+- name: Run black
+run:
+black --check .
+- name: Run flake8
+run: flake8
+- name: Run pylint
+run: pylint iglovikov_helper_functions
+- name: Run Mypy
+run: mypy iglovikov_helper_functions
+- name: Run isort
+run: isort --profile black iglovikov_helper_functions
+- name: tests
+run: |
+pip install .[tests]
+pytest
+\end{lstlisting}
+
+Пример CI-файла посложнее
+\begin{lstlisting}[
+title = {\sffamily .github/workflows/ci.yaml},
+style = bash,
+numbers = none	
+]
+name: CI
+on: [push, pull_request]  # триггеры
+
+jobs:
+  test_and_lint:
+    name: Test and lint
+    runs-on: ${{ matrix.operating-system }}
+    strategy:
+      matrix:
+        operating-system: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: [3.6, 3.7, 3.8]
+      fail-fast: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Update pip
+      run: python -m pip install --upgrade pip
+    - name: Install PyTorch on Linux and Windows
+      if: >
+        matrix.operating-system == 'ubuntu-latest' ||
+        matrix.operating-system == 'windows-latest'
+      run: >
+        pip install torch==1.4.0+cpu torchvision==0.5.0+cpu
+        -f https://download.pytorch.org/whl/torch_stable.html
+    - name: Install PyTorch on MacOS
+      if: matrix.operating-system == 'macos-latest'
+      run: pip install torch==1.4.0 torchvision==0.5.0
+    - name: Install dependencies
+      run: pip install .[tests]
+    - name: Install linters
+      run: pip install "pydocstyle<4.0.0" flake8 flake8-docstrings mypy
+    - name: Run PyTest
+      run: pytest
+    - name: Run Flake8
+      run: flake8
+    - name: Run mypy
+      run: mypy .
+
+  check_code_formatting:
+    name: Check code formatting with Black
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Update pip
+      run: python -m pip install --upgrade pip
+    - name: Install Black
+      run: pip install black==19.3b0
+    - name: Run Black
+      run: black --config=black.toml --check .
+
+  check_sphinx_build:
+    name: Check Sphinx build for docs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Update pip
+      run: python -m pip install --upgrade pip
+    - name: Install dependencies
+      run: pip install -r docs/requirements.txt
+    - name: Run Sphinx
+      run: sphinx-build -b html docs /tmp/_docs_build
+
+  check_transforms_docs:
+    name: Check that transforms docs are not outdated
+    runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          python-version: [3.8]
+      steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Update pip
+        run: python -m pip install --upgrade pip
+      - name: Install dependencies
+        run: pip install .
+      - name: Run checks
+        run: python tools/make_transforms_docs.py check README.md
+\end{lstlisting}
+
+
+\section{Настройка непрерывной доставки (CD) с помощью Codefresh}
+
+\section{Разработка собственных Python-пакетов для PyPI}
+
+\subsection{Краткая дорожная карта разработки собственного пакета}
+
+Дорожная карта по разработке пользовательского python-пакета для PyPI:
+
+\begin{enumerate}
+	\item Создать рабочую директорию пакета, например, с именем \texttt{advancedstatistic}: другими словами, это директория локального git-репозитория, в которой будут расположены поддиректории с python-модулями, реализующими основной функционал пакета, конфигурационные файлы, \texttt{README.md}, лицензия и пр.,
+	
+	\item Создать сконфигурированное виртуальное окружение,
+	
+	\item Инициализировать git-репозиторий с помощью \texttt{git init}
+	
+	\item Создать поддиректорию пакета с тем же именем что и корневая директория: то есть в локальном репозитории с именем \texttt{advancedstatistic} будет находиться\\ поддиректория \texttt{advancedstatistic} с модулями, реализующими функционал пакета; в поддиректории обязательно должен находиться файл \texttt{\_\_init\_\_.py} (без него будет неверно определена структура пакета)
+	\begin{lstlisting}[
+	style = bash,
+	numbers = none
+	]
+advancedstatistic/ <-- git-репозиторий
+    README.md
+    LICENSE
+    .git/
+    .gitignore
+    ...
+    advancedstatistic/ <-- директория пакета с модулями
+        __init__.py <-- специальный файл, который помогает определить структуру пакета
+        ... <-- разные py-модули
+	\end{lstlisting}
+	
+	\item Создать файл зависимостей для разработки пакета \texttt{requirements\_dev.txt}
+\begin{lstlisting}[
+title = {\sffamily requirements\_dev.txt},
+style = bash,
+numbers = none	
+]
+pip==20.2.4
+pytest==6.2.1
+pytest-cov==2.10.1
+wheel==0.35.1
+twine==3.2.0
+\end{lstlisting}
+
+    \item Установить зависимости в виртуальное окружение
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install -r requirements_dev.txt    
+\end{lstlisting}
+
+    \item Запустить процедуру сборки <<классического>> архива и whl-архива
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+python setup.py sdist bdist_wheel
+\end{lstlisting}
+
+В локальном репозитории будут созданы следующие директории:
+\begin{itemize}
+	\item \texttt{dist},
+	
+	\item \texttt{build},
+	
+	\item \texttt{advancedstatistic.egg-info}.
+\end{itemize}
+
+    \item Теперь можно опубликовать пакет на TestPyPI
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+\end{lstlisting}
+
+    \item Для проверки можно установить пакет с TestPyPI на локальную машину
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install --index-url https://test.pypi.org/simple/ advancedstatistic
+# или если у пакета есть зависимости
+pip install \
+  --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple advancedstatistic
+\end{lstlisting}
+
+В сеансе Python
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+>>> from advancedstatistic.Gauss import source_outliers
+...
+\end{lstlisting}
+
+    \item Если все прошло без проблем, то теперь можно опубликовать пакет на PyPI
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+twine upload dist/*
+\end{lstlisting}
+    \item Теперь можно отправить материалы на удаленный git-репозиторий с помощью \texttt{git push origin my\_branch}
+\end{enumerate}
+
+\subsection{Инструменты и приемы разработки пакетов}
+
+Очень неплохое введение в процедуру оформления проекта от Игловикова \url{https://ternaus.blog/tutorial/2020/08/28/Trained-model-what-is-next.html}.
+
+Для того чтобы подчеркнуть, что определенный набор пакетов устанавливается только разработчиками настоящего пакета, имя файла с зависимостями задают не как \texttt{requirements.txt}, а как \texttt{requirements\_dev.txt}.
+
+Пример файла зависимостей
+\begin{lstlisting}[
+title = {\sffamily requirements\_dev.txt},
+style = bash,
+numbers = none	
+]
+pip==20.2.4
+pytest==6.2.1
+pytest-cov==2.10.1
+wheel==0.35.1
+\end{lstlisting}
+
+ВАЖНО: здесь указываются точные версии пакетов в формате <<\texttt{major.minor.micro}>>.
+
+Установить пакеты из файла зависимостей можно так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install -r requirements_dev.txt
+\end{lstlisting}
+
+Файл \texttt{setup.py} -- это сценарий сборки пакета. Функция \texttt{setuptools.setup()} создаст иерархию пакета для загрузки на PyPI. Эта функция содержит информацию о пакете, номере версии и о том какие пакеты требуются пользователям
+
+\begin{lstlisting}[
+title = {\sffamily setup.py},
+style = ironpython,
+numbers = none	
+]
+from setuptools import setup, find_packages
+
+with open("README.md", "r") as readme_file:
+    readme = readme_file.read()
+
+# этот список должен быть как можно менее ограничительным
+requirements = ["ipython>=6", "nbformat>=4", "nbconvert>=5", "requests>=2"]
+
+setup(
+    name="advancedstatistic",
+    version="0.0.1",
+    author="Leor Finkelberg",
+    author_email="leor.finkelberg@yandex.ru",
+    description="A package to convert your Jupyter Notebook",
+    long_description=readme,
+    long_description_content_type="text/markdown",
+    url="https://github.com/LeorFinkelberg/advancedstatistic.git",
+    packages=find_packages(),
+    install_requires=requirements,  # <-- NB
+    classifiers=[
+        "Programming Language :: Python :: 3.7",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    ],
+)
+\end{lstlisting}
+
+\remark{
+Иногда в \texttt{setup.py} можно встретить аргумент \texttt{package\_dir}. Этот параметр нужен только тогда, когда устанавливаемые пакеты находятся в папке с другим именем
+}
+
+В отличие от списка зависимостей для разработки \texttt{requirements\_dev.txt}, список \texttt{requirements} в \texttt{install\_requires=...} должен быть как можно менее ограничительным.
+
+Подробнее об этом в \href{https://stackoverflow.com/questions/14399534/reference-requirements-txt-for-the-install-requires-kwarg-in-setuptools-setup-py/33685899#33685899}{Stack Overflow}.
+
+В \texttt{install\_requires=...} следует включать только те пакеты, которые необходимы для работы приложения.
+
+\remark{%
+	В случае когда пакет уже установлен и требуется его обновить до последней доступной версии, следует использовать конструкцию \texttt{pip install -U package\_name}
+}
+
+Twine \url{} -- это набор утилит для безопасной публикации Python-пакетов на PyPI. \texttt{twine} нужно добавить в \texttt{requirements\_dev.txt}
+\begin{lstlisting}[
+title = {\sffamily requirements\_dev.txt},
+style = bash,
+numbers = none	
+]
+pip==20.2.4
+pytest==6.2.1
+pytest-cov==2.10.1
+wheel==0.35.1
+twine==3.2.0
+\end{lstlisting}
+
+Теперь в корневой директории проекта следует запустить сборку
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+python setup.py sdist bdist_wheel
+\end{lstlisting}
+
+Будет создано несколько директорий -- \directory{dist}, \directory{build} и \directory{package\_name.egg-info}.
+
+В директории \texttt{dist} будут лежать:
+\begin{itemize}
+	\item \texttt{package\_name-0.0.1-py3-none-any.whl}: whl-архив
+	
+	\item \texttt{advancedstatistic-0.0.1.tar.gz}: архив исходников:
+	\begin{itemize}
+		\item \texttt{package\_name-0.0.1/.gitignore},
+		
+		\item \texttt{package\_name-0.0.1/package\_name/outlier\_detection.py}
+		
+		\item и т.д.
+	\end{itemize}
+\end{itemize}
+
+На машине пользователя \texttt{pip} будет устанавливать пакет из whl-архива (всякий раз, когда это возможно). Такие whl-архивы быстрее устанавливаются. В том случае, если \texttt{pip} не может установить пакет из whl-архива, то он будет пытаться установить пакет из архива исходников.
+
+Теперь необходимо создать учетную запись на тестовом сервере TestPyPI \url{https://test.pypi.org/account/register/}.
+
+ВАЖНО: пароли для тестового сервера TestPyPI и официального PyPI должны различаться.
+
+Для безопасной публикации пакета на TestPyPi будем использовать \texttt{twine} (при публикации пакета будет предложено ввести логин и пароль)
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+\end{lstlisting}
+
+Если возникнут ошибки, то нужно обновить версию пакета и удалить артефакты старой сборки (директории \texttt{build}, \texttt{dist} и \texttt{egg}). Затем перестроить пакет с помощью \texttt{python setup.py sdist bdist\_wheel} и перезагрузить пакет с помощью Twine. Номера версий на платформе TestPyPI не имеет большого значения.
+
+Если бы пакет был установлен на PyPI, то его можно было бы установить на локальную машину как обычно \texttt{pip install package\_name}.
+
+В случае с TestPyPI придется использовать модифицированную команду
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install --index-url https://test.pypi.org/simple my_package
+\end{lstlisting}
+
+Можно загрузить пакет с TestPyPI вместо PyPI указав специальный флаг \verb|--index-url|
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install --index-url https://test.pypi.org/simple/ my_package
+\end{lstlisting}
+
+Если нужно разрешить \texttt{pip} извлекать другие пакеты из PyPI, то нужно использовать флаг \verb|--extra-index-url|, чтобы указать на PyPI. Это полезно, когда тестируемый пакет имеет зависимости
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install \
+  --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple my_package
+\end{lstlisting}
+
+Если у пакета есть зависимости, то нужно использовать второй вариант.
+
+Посмотреть информацию о пакете (размещение пакета и пр.) можно с помощью так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip show my_package
+\end{lstlisting}
+
+Например, на macOs пакеты в виртуальных окружениях устанавливаются в \directory{\~ > opt > anaconda3 > envs > env\_name > lib > python3.7 > site-packages }.
+
+После того как пакет, например, \texttt{my\_package}, будет установлен с помощью \texttt{pip install my\_package}, в директории \texttt{... > site-packages} будет создано две поддиректории
+\begin{itemize}
+	\item \texttt{my\_package},
+	
+	\item \texttt{my\_package-0.0.2.dist-info}.
+\end{itemize}
+
+
+
+
+
+\subsection{Рабочий пример \texttt{setup.py}}
+
+Полезные ссылки на материалы, рассказывающие о тонкостях написания \texttt{setup.py}: 
+\begin{itemize}
+	\item \url{https://github.com/navdeep-G/setup.py},
+	
+	\item \url{https://packaging.python.org/guides/distributing-packages-using-setuptools/}
+\end{itemize}
+
+Базовые файл сборки позаимствован из репозитория \url{https://github.com/navdeep-G/setup.py}
+\begin{lstlisting}[
+title = {\sffamily setup.py},
+style = ironpython,
+numbers = none	
+]
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Note: To use the 'upload' functionality of this file, you must:
+#   $ pipenv install twine --dev
+
+import io
+import os
+import sys
+from shutil import rmtree
+
+from setuptools import find_packages, setup, Command
+
+# Package meta-data.
+NAME = 'mypackage'
+DESCRIPTION = 'My short description for my project.'
+URL = 'https://github.com/me/myproject'
+EMAIL = 'me@example.com'
+AUTHOR = 'Awesome Soul'
+REQUIRES_PYTHON = '>=3.6.0'
+VERSION = '0.1.0'
+
+# What packages are required for this module to be executed?
+# Этот список должен быть как можно менее ограничительным
+REQUIRED = [
+    # 'requests', 'maya', 'records',
+]
+
+# What packages are optional?
+EXTRAS = {
+	# 'fancy feature': ['django'],
+}
+
+# The rest you shouldn't have to touch too much :)
+# ------------------------------------------------
+# Except, perhaps the License and Trove Classifiers!
+# If you do change the License, remember to change the Trove Classifier for that!
+
+here = os.path.abspath(os.path.dirname(__file__))
+
+# Import the README and use it as the long-description.
+# Note: this will only work if 'README.md' is present in your MANIFEST.in file!
+try:
+    with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
+        long_description = '\n' + f.read()
+    except FileNotFoundError:
+        long_description = DESCRIPTION
+
+# Load the package's __version__.py module as a dictionary.
+about = {}
+if not VERSION:
+    project_slug = NAME.lower().replace("-", "_").replace(" ", "_")
+    with open(os.path.join(here, project_slug, '__version__.py')) as f:
+        exec(f.read(), about)  # ???
+else:
+    about['__version__'] = VERSION
+
+
+class UploadCommand(Command):
+    """Support setup.py upload."""
+
+    description = 'Build and publish the package.'
+    user_options = []
+
+    @staticmethod
+    def status(s):
+        """Prints things in bold."""
+        print('\033[1m{0}\033[0m'.format(s))
+
+    def initialize_options(self):
+        pass
+
+    def finalize_options(self):
+        pass
+
+    def run(self):
+        try:
+            self.status('Removing previous builds…')
+            rmtree(os.path.join(here, 'dist'))
+        except OSError:
+            pass
+
+        self.status('Building Source and Wheel (universal) distribution…')
+        os.system('{0} setup.py sdist bdist_wheel --universal'.format(sys.executable))
+
+        self.status('Uploading the package to PyPI via Twine…')
+        os.system('twine upload dist/*')
+
+        self.status('Pushing git tags…')
+        os.system('git tag v{0}'.format(about['__version__']))
+        os.system('git push --tags')
+
+        sys.exit()
+
+
+# Where the magic happens:
+setup(
+    name=NAME,
+    version=about['__version__'],
+    description=DESCRIPTION,
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    author=AUTHOR,
+    author_email=EMAIL,
+    python_requires=REQUIRES_PYTHON,
+    url=URL,
+    packages=find_packages(exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
+    # If your package is a single module, use this instead of 'packages':
+    # py_modules=['mypackage'],
+
+    # entry_points={
+	#     'console_scripts': ['mycli=mymodule:cli'],
+	# },
+    install_requires=REQUIRED,
+    extras_require=EXTRAS,
+    include_package_data=True,
+    license='MIT',
+    classifiers=[
+        # Trove classifiers
+        # Full list: https://pypi.python.org/pypi?%3Aaction=list_classifiers
+        'License :: OSI Approved :: MIT License',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: Implementation :: CPython',
+        'Programming Language :: Python :: Implementation :: PyPy'
+    ],
+    # $ setup.py publish support.
+    cmdclass={
+        'upload': UploadCommand,
+    },
+)
+\end{lstlisting}
+
+Шикарный \texttt{setup.py} файл из репозитория \texttt{aiomisc}
+\begin{lstlisting}[
+title = {\sffamily setup.py (эталон)},
+style = ironpython,
+numbers = none	
+]
+import os
+
+from setuptools import setup, find_packages
+from importlib.machinery import SourceFileLoader
+
+
+module_name = 'aiomisc'
+
+try:
+    version = SourceFileLoader(
+        module_name,
+        os.path.join(module_name, 'version.py') # читаем файл version.py (см. ниже)
+    ).load_module()  # вернет что-то вроде  <module 'aiomisc' from 'aiomisc/version.py'>
+
+    version_info = version.version_info  # (11, 1, 0, 'asdfasd')
+except FileNotFoundError:
+    version_info = (0, 0, 0)
+
+
+__version__ = '{}.{}.{}'.format(*version_info) # задаем версию на базе version.py
+
+
+def load_requirements(fname):
+    """ load requirements from a pip requirements file """
+    with open(fname) as f:
+        line_iter = (line.strip() for line in f.readlines()) # генераторное выражение
+        return [line for line in line_iter if line and line[0] != '#']
+
+
+setup(
+    name=module_name,
+    version=__version__,
+    author='Dmitry Orlov',
+    author_email='me@mosquito.su',
+    license='MIT',
+    description='aiomisc - miscellaneous utils for asyncio',
+    long_description=open("README.rst").read(),
+    platforms="all",
+    classifiers=[
+        "Framework :: Pytest",
+        'Intended Audience :: Developers',
+        'Natural Language :: Russian',
+        'Operating System :: MacOS',
+        'Operating System :: POSIX',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: Implementation :: CPython',
+    ],
+    packages=find_packages(exclude=['tests']),
+    package_data={"aiomisc": ["py.typed"]},
+    install_requires=load_requirements('requirements.txt'),
+    extras_require={
+    	'aiohttp': ['aiohttp'],
+	    'asgi': ['aiohttp-asgi'],
+	    'carbon': ['aiocarbon~=0.15'],
+	    'contextvars': ['contextvars~=2.4'],
+	    'develop': load_requirements('requirements.dev.txt'),
+	    'raven': ['raven-aiohttp'],
+	    'uvloop': ['uvloop>=0.14,<1'],
+	    'cron': ['croniter~=0.3.34'],
+	    ':python_version < "3.7"': 'async-generator',
+    },
+    entry_points={ # точка входа
+	    "pytest11": ["aiomisc = aiomisc_pytest.pytest_plugin"]
+    },
+    url='https://github.com/mosquito/aiomisc'
+)
+\end{lstlisting}
+
+\begin{lstlisting}[
+title = {\sffamily version.py},
+style = ironpython,
+numbers = none
+]
+""" This file is automatically generated by distutils. """
+
+# Follow PEP-0396 rationale
+version_info = (11, 1, 0, 'g4edc986')
+__version__ = '11.1.0'
+\end{lstlisting}
+
+В \texttt{SourceFileLoader} передаем полное имя и путь до модуля, который нужно загрузить, например, так
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from importlib.machinery import SourceFileLoader
+
+version = SourceFileLoader(
+    "version.py",
+    os.path.join("fakedir", "version.py")
+).load_module()
+version.version_info
+...
+\end{lstlisting}
+
+
+\section{Инструменты автоматического форматирования, инспектирования и анализа кода}
+
+Список обсуждаемых инструментов:
+\begin{itemize}
+	\item \texttt{Deepsource}, \texttt{Deepcode}, \texttt{Codacy}, 
+	
+	\item \texttt{flake8},
+	
+	\item \texttt{black},
+	
+	\item \texttt{pre-commit},
+	
+	
+\end{itemize}
+
+Выполнить автоматический анализ кода можно с помощью следующих инструментов на базе~AI:
+\begin{itemize}
+	\item Deepsource \url{https://deepsource.io/}: нужно просто зарегистрироваться, например, через git-репозиторий, а затем подключить свой репозиторий для анализа; после того, как будет сделан коммит, запуститься процедура анализа на платформе DeepSource (результаты ); в репозитории будет создан специальный конфигурационный файл \texttt{.deepsource.toml},
+	
+	\item Deepcode \url{https://www.deepcode.ai/},
+	
+	\item Codacy \url{https://www.codacy.com/}
+\end{itemize}
+
+Пример конфигурационного файла для автоматического анализа кода на базе Deepsource
+\begin{lstlisting}[
+title = {\sffamily .deepsource.toml},
+style = bash,
+numbers = none	
+]
+version = 1
+
+test_patterns = [
+  'tests/**'
+]
+
+exclude_patterns = [
+
+]
+
+[[analyzers]]
+name = "python"
+enabled = true
+runtime_version = "3.x.x"
+
+  [analyzers.meta]
+  max_line_length = 79
+\end{lstlisting}
+
+Наиболее общий инструмент инспектирования кода (так называемые линтеры) -- \texttt{flake8}. Flake8 умеет работать не только с PEP8, но и с другими правилами (кроме того поддерживате пользовательские плагины).
+
+Для автоматического форматирования кода из командной строки или как pre-commit hook удобно использовать \texttt{black} \url{https://black.readthedocs.io/en/stable/installation_and_usage.html}.
+
+Инструмент \texttt{black} поддерживается \texttt{vim} \url{https://black.readthedocs.io/en/stable/editor_integration.html#vim}.
+
+Проще всего установить \texttt{black} в Vim с помощью менеджера плагинов \texttt{Vundle}.
+
+Сначала нужно прописать в конфигурационном файле \verb|~/.vimrc| следующую строку
+\begin{lstlisting}[
+title = {\sffamily ~/.vimrc},
+style = bash,
+numbers = none	
+]
+Plugin 'psf/black'
+\end{lstlisting}
+
+А затем в сеансе Vim нужно набрать \texttt{:PluginInstall}. 
+
+Если возникнет ошибка конца строки <<E492: Not an editor command: \verb|^M|>>, то в директории плагина (например, \directory{Users>leor.finkelberg>.vim>bundle>black}) можно воспользоваться конструкцией 
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+# переконвертировать все vim-файлы в unix-формат
+find . -name '*.vim' | xargs dos2unix -f
+\end{lstlisting}
+
+Утилита командной строки (и pre-commit hook) \texttt{yesqa} \url{https://pypi.org/project/yesqa/} используется для автоматического удаления ненужных комментариев вида \verb|# noqa|.
+
+В конфигурационный файл \texttt{.pre-commit-config.yaml}
+\begin{lstlisting}[
+title = {\sffamily .pre-commit-config.yaml},
+style = bash,
+numbers = none	
+]
+...
+-   repo: https://github.com/asottile/yesqa
+    rev: v1.2.2
+    hooks:
+-   id: yesqa
+...
+\end{lstlisting}
+
+
+
 \section{\texttt{Python} и \LaTeX}
 
 Для компиляции \LaTeX-документов прямо из-под \texttt{Python} можно использовать библиотеку \texttt{pylatex}\footnote{Устанавливается как обычно \texttt{pip install pylatex}} \url{https://jeltef.github.io/PyLaTeX/current/}.
@@ -3983,6 +4864,9 @@ def blocking_reader(fname):
 
 Декораторы \verb|@threaded| делают из обычной функции \emph{awaitable-объект}. Нельзя выполнить функцию, обернутую \verb|@threaded| из функции, обернутой \verb|@threaded|.
 
+\section{Приемы работы с DVC}
+
+С основами использования инструмента DVC можно познакомиться по статье \url{https://proglib.io/p/git-dlya-data-science-kontrol-versiy-modeley-i-datasetov-s-pomoshchyu-dvc-2020-12-02}.
 
 \section{Работа с базами данных в \texttt{Python}}
 
