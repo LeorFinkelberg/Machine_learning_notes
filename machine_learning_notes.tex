@@ -296,6 +296,23 @@ jobs:
 
 \section{Разработка собственных Python-пакетов для PyPI}
 
+\subsection{Семантическое управление версиями}
+
+Номер релиза обычно дается в формате \href{https://semver.org/}{MAJOR.MINOR.PATCH}:
+\begin{itemize}
+	\item MAJOR: изменяется, когда разработчики вносят обратно несовместимые изменения API,
+	
+	\item MINOR: изменяется, когда разработчики вносят обратно совместимые изменения; например, если какая-нибудь функция публичного API признается устаревшей или появляется обратно совместимая новая функциональность,
+	
+	\item PATCH: изменяется, когда разработчики исправляют обратно совместимые ошибки (x.y.Z | x > 0).
+\end{itemize}
+
+Предрелизная версия имеет более низкий приоритет, чем связанные с ней обычные версии. Предрелизная версия указывает, что версия нестабильна и может не удовлетворять предполагаемым требованиям совместимости. Примеры: \texttt{1.0.0-alpha}, \texttt{1.0.0-alpha.1}, \texttt{1.0.0-0.3.7}.
+
+Можно указывать метаданные сборки (метаданные не входят в приоритет): \texttt{1.0.0-alpha+001}, \texttt{1.0.0+201303}, \texttt{1.0.0-beta+exp.sha.5114f85}.
+
+Пример разрешения приоритетов: \texttt{1.0.0-alpha} < \texttt{1.0.0-alpha.1} < \texttt{1.0.0-alpha.beta} < \texttt{1.0.0-beta} < \texttt{1.0.0-beta.2} < \texttt{1.0.0-beta.11} < \texttt{1.0.0-rc.1} < \texttt{1.0.0}.
+
 \subsection{Краткая дорожная карта разработки собственного пакета}
 
 Дорожная карта по разработке пользовательского python-пакета для PyPI:
@@ -404,6 +421,13 @@ twine upload dist/*
 
 Очень неплохое введение в процедуру оформления проекта от Игловикова \url{https://ternaus.blog/tutorial/2020/08/28/Trained-model-what-is-next.html}.
 
+Полезные статьи по оформлению пакета
+\begin{itemize}
+	\item \url{https://towardsdatascience.com/10-steps-to-set-up-your-python-project-for-success-14ff88b5d13},
+	
+	\item \url{https://towardsdatascience.com/build-your-first-open-source-python-project-53471c9942a7}.
+\end{itemize}
+
 Для того чтобы подчеркнуть, что определенный набор пакетов устанавливается только разработчиками настоящего пакета, имя файла с зависимостями задают не как \texttt{requirements.txt}, а как \texttt{requirements\_dev.txt}.
 
 Пример файла зависимостей
@@ -416,6 +440,7 @@ pip==20.2.4
 pytest==6.2.1
 pytest-cov==2.10.1
 wheel==0.35.1
+black==20.8b1
 \end{lstlisting}
 
 ВАЖНО: здесь указываются точные версии пакетов в формате <<\texttt{major.minor.micro}>>.
@@ -528,6 +553,36 @@ twine upload --repository-url https://test.pypi.org/legacy/ dist/*
 
 Если возникнут ошибки, то нужно обновить версию пакета и удалить артефакты старой сборки (директории \texttt{build}, \texttt{dist} и \texttt{egg}). Затем перестроить пакет с помощью \texttt{python setup.py sdist bdist\_wheel} и перезагрузить пакет с помощью Twine. Номера версий на платформе TestPyPI не имеет большого значения.
 
+Чтобы каждый раз при публикации пакета не нужно было вводить логин и пароль, можно в домашней директории подготовить конфигурационный файл (\texttt{twine} будет просматривать этот файл)
+\begin{lstlisting}[
+title = {\sffamily \~{}/.pypirc},
+style = bash,
+numbers = none	
+]
+[distutils]
+index-servers =
+pypi
+testpypi
+
+[testpypi]
+repository: https://test.pypi.org/legacy
+username = your_username
+password = your_pypitest_password
+
+[pypi]
+username = your_username
+password = your_pypi_password
+\end{lstlisting}
+
+Теперь можно опубликовать свой пакет 
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+twine upload -r testpypi dist/*  # на TestPyPI
+twine upload dist/*  # на PyPI
+\end{lstlisting}
+
 Если бы пакет был установлен на PyPI, то его можно было бы установить на локальную машину как обычно \texttt{pip install package\_name}.
 
 В случае с TestPyPI придется использовать модифицированную команду
@@ -579,7 +634,7 @@ pip show my_package
 
 
 
-\subsection{Рабочий пример \texttt{setup.py}}
+\subsection{Примеры файлов \texttt{setup.py}}
 
 Полезные ссылки на материалы, рассказывающие о тонкостях написания \texttt{setup.py}: 
 \begin{itemize}
@@ -588,7 +643,91 @@ pip show my_package
 	\item \url{https://packaging.python.org/guides/distributing-packages-using-setuptools/}
 \end{itemize}
 
-Базовые файл сборки позаимствован из репозитория \url{https://github.com/navdeep-G/setup.py}
+Пример простого файла \texttt{setup.py} из документации Python \url{https://packaging.python.org/tutorials/packaging-projects/}
+\begin{lstlisting}[
+title = {\sffamily setup.py},
+style = ironpython,
+numbers = none	
+]
+import setuptools
+
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
+setuptools.setup(
+    name="example-pkg-YOUR-USERNAME-HERE", # станет именем пакета
+    version="0.0.1",
+    author="Example Author",
+    author_email="author@example.com",
+    description="A small example package",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/pypa/sampleproject",
+    packages=setuptools.find_packages(),
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
+    python_requires='>=3.6',
+)
+\end{lstlisting}
+
+Директория проекта выглядит так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+packaging_tutorial
+ |-- LICENSE
+ |-- README.md
+ |-- example_pkg  # будет пакетом!!!
+ |   |-- __init__.py  # <-- NB
+ |-- setup.py
+ |-- tests
+\end{lstlisting}
+
+В этом примере:
+\begin{itemize}
+	\item \texttt{name} -- имя дистрибутива пакета,
+	
+	\item \texttt{version} -- версия пакета (см. \href{https://www.python.org/dev/peps/pep-0440/}{PEP 440}),
+	
+	\item \texttt{author}/\texttt{author\_email} -- автор пакета,
+	
+	\item \texttt{description} -- одностроковое описание пакета,
+	
+	\item \texttt{long\_description } -- подробное описание пакета (читается из \texttt{README.md}),
+	
+	\item \texttt{url} -- URL домашней страницы пакета (как правило это ссылка на GitHub, GitLab или еще какой-нибудь сервис хостинга),
+	
+	\item \texttt{packages} -- это список пакетов, которые должны быть включены в дистрибутив; вместо того, чтобы перечислять каждый пакет, можно для автоматического обнаружения пакетов и подпактов использовать функцию \texttt{find\_packages()} (в данном случае функция найдет только пакет \texttt{example\_pkg}),
+	
+	\item \texttt{classifier} -- дополнительные метаданные о пакете.
+\end{itemize}
+
+Для создания дистрибутива пакета следует запустить следующую команду в той же директории, где лежит файл \texttt{setup.py}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+python setup.py sdist bdist_wheel
+\end{lstlisting}
+
+Эта команда должна в директории \texttt{dist} сгенерировать два файла
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+dist/
+  example_pkg_YOUR_USERNAME_HERE-0.0.1-py3-none-any.whl  # whl-архив
+  example_pkg_YOUR_USERNAME_HERE-0.0.1.tar.gz  # tar-архив исходников
+\end{lstlisting}
+
+Для распространения пакетов рекомендуется использовать \texttt{twine}.
+
+
+Этот файл сборки позаимствован из репозитория \url{https://github.com/navdeep-G/setup.py}
 \begin{lstlisting}[
 title = {\sffamily setup.py},
 style = ironpython,
@@ -915,7 +1054,7 @@ find . -name '*.vim' | xargs dos2unix -f
 
 Утилита командной строки (и pre-commit hook) \texttt{yesqa} \url{https://pypi.org/project/yesqa/} используется для автоматического удаления ненужных комментариев вида \verb|# noqa|.
 
-В конфигурационный файл \texttt{.pre-commit-config.yaml}
+Для того чтобы перед коммитом \texttt{yesqa} проверяла код требуется включить в конфигурационный файл \texttt{.pre-commit-config.yaml} следующие строки
 \begin{lstlisting}[
 title = {\sffamily .pre-commit-config.yaml},
 style = bash,
@@ -928,6 +1067,279 @@ numbers = none
 -   id: yesqa
 ...
 \end{lstlisting}
+
+Вот сложный пример \texttt{.pre-commit-config.yaml}
+
+\begin{lstlisting}[
+title = {\sffamily .pre-commit-config.yaml},
+style = bash,
+numbers = none	
+]
+exclude: _pb2\.py$
+repos:
+- repo: https://github.com/pre-commit/mirrors-isort
+rev: f0001b2  # Use the revision sha / tag you want to point at
+hooks:
+- id: isort
+args: ["--profile", "black"]
+- repo: https://github.com/psf/black
+rev: 20.8b1
+hooks:
+- id: black
+- repo: https://github.com/asottile/yesqa
+rev: v1.1.0
+hooks:
+- id: yesqa
+additional_dependencies:
+- flake8-bugbear==20.1.4
+- flake8-builtins==1.5.2
+- flake8-comprehensions==3.2.2
+- flake8-tidy-imports==4.1.0
+- flake8==3.7.9
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+rev: v2.3.0
+hooks:
+- id: check-docstring-first
+- id: check-json
+- id: check-merge-conflict
+- id: check-yaml
+- id: debug-statements
+- id: end-of-file-fixer
+- id: trailing-whitespace
+- id: flake8
+- id: requirements-txt-fixer
+-   repo: https://github.com/pre-commit/mirrors-pylint
+rev: d230ffd
+hooks:
+-   id: pylint
+args:
+- --max-line-length=119
+- --ignore-imports=yes
+- -d duplicate-code
+- repo: https://github.com/asottile/pyupgrade
+rev: v2.7.3
+hooks:
+- id: pyupgrade
+args: ['--py37-plus']
+- repo: https://github.com/pre-commit/pygrep-hooks
+rev: v1.5.1
+hooks:
+- id: python-check-mock-methods
+- id: python-use-type-annotations
+- repo: https://github.com/pre-commit/mirrors-mypy
+rev: 9feadeb
+hooks:
+- id: mypy
+args: [--ignore-missing-imports, --warn-no-return, --warn-redundant-casts, --disallow-incomplete-defs]
+\end{lstlisting}
+
+Перед коммитом полезно выполнять команду
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pre-commit run --all-files
+\end{lstlisting}
+
+ВАЖНО: если виртуальное окружение конструируется с помощью \texttt{conda} может возникнуть ошибка <<FileNotFoundError: [Errno 2] No such file or directory...>> \\ при запуске \verb|pre-commit run --all-files|.
+
+Поэтому следует использовать \texttt{virtualenv} версии 20.0.33 (!)
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+$ pip install virtualenv==20.0.33
+$ virtualenv env
+$ source env/bin/actiavte # для Linux/MacOs etc
+$ env\Scripts\activate.bat # для Windows
+\end{lstlisting}
+
+\section{Автоматический анализ кода с платформой DeepsSource}
+
+Платформа DeepSource \url{https://deepsource.io/} позволяет проводить автоматический анализ кода на анти-паттерны, проблемы с производительностью и поиск уязвимостей при каждом коммите или pull-request. Кроме того платформа отслеживает количество зависимостей, покрытие документацией и пр.
+
+С документацией можно ознакомиться здесь \url{https://deepsource.io/docs/}.
+
+Управлять поведением DeepSource можно с помощью конфигурационного \\файла \texttt{.deepsource.toml}
+\begin{lstlisting}[
+title = {\sffamily .deepsource.toml},
+style = bash,
+numbers = none	
+]
+version = 1
+
+test_patterns = [
+    "tests/**",
+    "test_*.py"
+]
+
+exclude_patterns = [
+    "migrations/**",
+    "**/examples/**"
+]
+
+[[analyzers]]
+name = "python"  # анализатор для Python
+enabled = true
+dependency_file_paths = ["requirements/development.txt"] # список внешних зависимостей
+
+    [analyzers.meta]  # метаданные для анализатора
+    runtime_version = "3.x.x" # версия языка
+    type_checker = "mypy" # анализатор проверки типов
+    max_line_length = 79  # максимально допустимая длина строки
+    skip_doc_coverage = ["module", "magic", "init"] # артифакты, которые следует пропустить при расчете покрытия документации
+    additional_builtins = ["_", "pretty_output"] # дополнительные модули
+    
+[[analyzers]]
+name = "shell"  # анализатор для сценариев командной оболочки
+enabled = true
+
+    [analyzers.meta]
+    dialect = "zsh"
+
+[[analyzers]]  # анализатор для SQL
+name = "sql"
+enabled = true
+
+    [analyzers.meta]
+    max_line_length = 100
+    tab_space_size = 4
+    indent_unit = "tab"
+    comma_style = "trailing"
+    capitalisation_policy = "consistent"
+    allow_scalar = true
+    single_table_references = "consistent"
+\end{lstlisting}
+
+По умолчанию, если в репозитории обнаруживаются ниже перечисленные файлы, то они проверяются на наличие зависимостей
+\begin{itemize}
+	\item \texttt{Pipfile},
+	
+	\item \texttt{Pipfile.lock},
+	
+	\item \texttt{poetry.lock},
+	
+	\item \texttt{pyproject.toml} (если содержит разделы \texttt{[tool.poetry]} или \texttt{[tool.fit]}),
+	
+	\item \texttt{requirements.txt},
+	
+	\item \texttt{setup.py}.
+\end{itemize}
+
+Файл \texttt{.deepsource.toml} располагается в корне проекта
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+.
+|-- .deepsource.toml
+|-- README.md
+|-- bar
+|   |-- baz.py
+|-- foo.py
+\end{lstlisting}
+
+Вот исчерпывающий список возможных вариантов конфигурации
+\begin{itemize}
+	\item \texttt{version}: обязательное свойство; на текущий момент поддерживается только значение <<1>>
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+version = 1
+\end{lstlisting}
+	
+	\item \texttt{exclude\_patterns}: список шаблонов файлов и директорий, которые не должны учитываться при выполнении анализа; шаблоны строятся относительно корня проекта
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+exclude_patterns = [
+    "bin/**",
+    "**/node_modules/",
+    "js/*/*/min.js"
+]
+\end{lstlisting}
+	
+	\item \texttt{test\_patterns}: список шаблонов файлов и директорий, содержащих тестовые файлы; шаблоны строятся относительно корня проекта,
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+test_patterns = [
+    "tests/**",
+    "test_*.py"
+]
+\end{lstlisting}
+	
+	\item \texttt{analyzers}: список анализаторов (в конфигурации должен быть хотя бы один анализатор),
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+[[analyzers]]
+name = "python"
+enabled = true
+dependency_file_paths = [
+    "requirements.txt",
+    "Pipfile"
+]
+\end{lstlisting}
+	
+	\item \texttt{transformers}: список трансформеров
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+[[transformers]]
+name = "black"
+enabled = true
+\end{lstlisting}
+\end{itemize}
+
+\subsection{Связка DeepSource и Travis CI}
+
+Для того чтобы платформа DeepSource имела возможность извлекать метрики покрытия кода тестами из Travis CI \url{https://www.travis-ci.com/} следует в конфигурационный \\файл \texttt{.deepsource.toml} добавить анализатор <<Test Coverage>> (см. \url{https://deepsource.io/docs/how-to/add-python-cov-ci.html})
+\begin{lstlisting}[
+title = {\sffamily .deepsource.toml},
+style = bash,
+numbers = none	
+]
+...
+[[analyzers]]
+name = "test-coverage"
+enabled = true
+...
+\end{lstlisting}
+а в конфигурационный файл \texttt{.travis.yml} следующие строки
+\begin{lstlisting}[
+title = {\sffamily .travis.yml},
+style = bash,
+numbers = none	
+]
+# Travis CI config
+...
+after_success:  # this is for DeepSource.io
+  # Generate coverage report in xml format
+  - coverage xml
+
+  # Install deepsource CLI
+  - curl https://deepsource.io/cli | sh
+
+  # From the root directory, run the report coverage command
+  - ./bin/deepsource report --analyzer test-coverage --key python --value-file ./coverage.xml
+\end{lstlisting}
+
+Затем на странице Travis CI, на вкладке Settings, например, \url{https://www.travis-ci.com/github/LeorFinkelberg/termostablizator/settings}, необходимо создать переменную окружения \texttt{DEEPSOURCE\_DSN} со значением Data Source Name (DNS), которое можно узнать на странице DeepSource по пути \directory{Settings > Reporting}.
+
+Получится что-то вроде
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+DEEPSOURCE\_DSN=https://0a69347b13674f13a8ca39b9464cb682@deepsource.io
+\end{lstlisting}
+
 
 
 
