@@ -593,13 +593,6 @@ numbers = none
 pip install --index-url https://test.pypi.org/simple my_package
 \end{lstlisting}
 
-Можно загрузить пакет с TestPyPI вместо PyPI указав специальный флаг \verb|--index-url|
-\begin{lstlisting}[
-style = bash,
-numbers = none	
-]
-pip install --index-url https://test.pypi.org/simple/ my_package
-\end{lstlisting}
 
 Если нужно разрешить \texttt{pip} извлекать другие пакеты из PyPI, то нужно использовать флаг \verb|--extra-index-url|, чтобы указать на PyPI. Это полезно, когда тестируемый пакет имеет зависимости
 \begin{lstlisting}[
@@ -727,7 +720,7 @@ dist/
 Для распространения пакетов рекомендуется использовать \texttt{twine}.
 
 
-Этот файл сборки позаимствован из репозитория \url{https://github.com/navdeep-G/setup.py}
+Другой пример файла сборки позаимствован из репозитория \url{https://github.com/navdeep-G/setup.py}
 \begin{lstlisting}[
 title = {\sffamily setup.py},
 style = ironpython,
@@ -959,7 +952,7 @@ version_info = (11, 1, 0, 'g4edc986')
 __version__ = '11.1.0'
 \end{lstlisting}
 
-В \texttt{SourceFileLoader} передаем полное имя и путь до модуля, который нужно загрузить, например, так
+В \texttt{SourceFileLoader} передаем имя и полный путь до модуля, который нужно загрузить, например, так
 \begin{lstlisting}[
 style = ironpython,
 numbers = none	
@@ -972,6 +965,570 @@ version = SourceFileLoader(
 ).load_module()
 version.version_info
 ...
+\end{lstlisting}
+
+\subsection{Точки входа в \texttt{setup.py} файлах}
+
+Точки входа -- это методы, с помощью которых другие программы на Python могут обнаруживать динамические свойства, обеспеченные пакетом.
+
+Рассмотрим простой пример. Пусть рабочая директория выглядит так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+snake_package/ # рабочая директория
+  |-- snake_package/ # пакет
+  |     |-- snake.py
+  |-- setup.py
+\end{lstlisting}
+
+Модуль \texttt{setup.py} выглядит следующим образом
+\begin{lstlisting}[
+title = {\sffamily setup.py},
+style = ironpython,
+numbers = none	
+]
+from setuptools import setup
+
+setup(
+    name = "snake_package",
+    entry_points = {
+        "console_scripts" : [ # группа точек
+            "snake = snake_package.snake:main",
+        ],
+    }
+)
+\end{lstlisting}
+
+Здесь \texttt{snake} -- это имя утилиты командной строки (и одновременно имя точки входа), \\ \texttt{snake\_package.snake} -- это путь до модуля \texttt{snake} от корня директории, а \texttt{main} -- функция модуля \texttt{snake}.
+
+Теперь как выглядит модуль \texttt{snake.py} 
+\begin{lstlisting}[
+title = {\sffamily snake.py},
+style = ironpython,
+numbers = none
+]
+simple_snake = "simple snake"
+	
+def main():
+	print(simple_snake)
+	
+	
+if __name__ == "__main__":
+	main()
+\end{lstlisting}
+
+Теперь, если запустить 
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+python setup.py develop
+\end{lstlisting}
+то в виртуальном окружении (например, \directory{C > Users > ADM > Anaconda3 > envs > env\_for\_tests > Scripts}) будут созданы следующие файлы
+\begin{itemize}
+	\item \texttt{snake-script.py},
+	
+	\item \texttt{snake.exe}.
+\end{itemize}
+
+Упрощенно можно считать так: при вызове в командной строке \texttt{snake} будет вызвана одноименная точка входа из группы \texttt{console\_scripts}, которая вызовет ассоциированную с точкой входа \texttt{snake} функцию (в данном случае \texttt{main}).
+
+Автоматически созданный сценарий \texttt{snake-script.py} будет иметь следующее содержание
+\begin{lstlisting}[
+title = {\sffamily snake-script.py},
+style = ironpython,
+]
+#!C:\Users\ADM\Anaconda3\envs\env_for_tests\python.exe
+# EASY-INSTALL-ENTRY-SCRIPT: 'snake-package','console_scripts','snake'
+import re
+import sys
+
+# for compatibility with easy_install; see #2198
+__requires__ = 'snake-package'
+
+try:
+    from importlib.metadata import distribution
+except ImportError:
+    try:
+        from importlib_metadata import distribution
+    except ImportError:
+        from pkg_resources import load_entry_point
+
+
+def importlib_load_entry_point(spec, group, name):
+    dist_name, _, _ = spec.partition('==')
+    matches = (
+        entry_point
+        for entry_point in distribution(dist_name).entry_points
+        if entry_point.group == group and entry_point.name == name
+    )
+    return next(matches).load()
+
+
+globals().setdefault('load_entry_point', importlib_load_entry_point)
+
+
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw?|\.exe)?$', '', sys.argv[0])
+    sys.exit(load_entry_point('snake-package', 'console_scripts', 'snake')())
+\end{lstlisting}
+
+Здесь мы сначала пытаемся различными способами включить в пространство имен модуля функцию \texttt{distribution}, затем если что-то пошло не так -- функцию \texttt{load\_entry\_point} из библиотеки \texttt{pkg\_resources}.
+
+Если удалось импортировать функцию \texttt{distribution}, то функции \texttt{load\_entry\_point} нет в словаре \texttt{globals()} и с помощью метода \texttt{setdefault} мы создаем в этом словаре пару из отсутствующего ключа \texttt{distribution} и ссылки на функцию \texttt{importlib\_load\_entry\_point} в качестве значения по умолчанию, а затем возвращаем это значение, так сказать, в никуда. Теперь, обращаясь к функции \texttt{load\_entry\_point} будет вызываться функция \texttt{importlib\_load\_entry\_point}.
+
+Если же функция \texttt{load\_entry\_point} была импортирована, то она будет присутствовать в словаре \texttt{globals()} и мы просто вернем значение по ключу в никуда.
+
+Модуль \texttt{snake-script.py} запускается на прямую, поэтому условие выполняется и мы переходим к строке 32. Здесь, используя регулярное выражение
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+(-script.\pyw?|\.exe)?$
+\end{lstlisting}
+которое ищет выражения вида \texttt{-script.py} или \texttt{-script.pyw} или \texttt{.exe} или ничего не ищет в конце строки, замещаем найденную группу пустой строкой в строке, которую возвращает \texttt{sys.argv[0]} (это имя запущенного сценария).
+
+Переопределяем первый элемент списка аргументов командной строки и, наконец, вызываем функцию \texttt{load\_entry\_point}:
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+# эта функция возвращает ссылку на функцию, ассоциированную с ключом snake
+load_entry_point(
+    "snake-package",   # имя пакета
+    "console_scripts", # имя группы точек входа 
+    "snake"            # имя точки входа
+)  # <function snake_package.snake.main()>
+\end{lstlisting}
+
+Эта функция вернет ссылку на функцию \texttt{main} из модуля \texttt{snake.py} пакета \texttt{snake\_package}, поэтому в строке 33 функция \texttt{load\_entry\_point} вызывается как
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+load_entry_point(...)() # main() -> "simple snake"
+\end{lstlisting}
+
+В том случае, если была загружена не непосредственно функция \texttt{pkg\_resources.load\_entry\_point}, а функция по умолчанию \texttt{importlib\_load\_entry\_point}, то произойдет следующее.
+
+Сначала имя пакета будет разбито по строке \verb|"=="| на три части с помощью строкового метода \texttt{partition}. При распаковке в переменную \texttt{dist\_name} попадет первая часть строки (до подстроки \verb|"=="|). Затем с помощью функции \texttt{distribution} от имени пакета будут извлечены точки входа
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+distribution("snake_package").entry_points
+# [EntryPoint(name='snake', value='snake_package.snake:main', group='console_scripts')]
+\end{lstlisting}
+
+Далее с помощью генераторного выражения отбираем только точки входа из группы \texttt{console\_scripts} с именем \texttt{snake}.
+
+Конструкция \texttt{next(matches).load()} возвращает ссылку на функцию \texttt{main}. Дальше все как и раньше.
+
+Если обобщить, то в данном случае скрипт \texttt{snake-script.py} просто вызывает функцию \texttt{main()}, ассоциированную с точкой входа \texttt{snake}.
+
+\remark{
+Для простоты можно считать, что, когда мы говорим в командной строке \texttt{snake}, Python ищет точку входа с этим именем и вызывает ассоциированную с этой точкой входа функцию
+}
+
+С помощью утилиты \texttt{epi} (Entry Point Inspector) можно визуализировать точки входа
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+# выведет список имен групп точек входа
+epi group list | grep console_scripts
+\end{lstlisting}
+
+Продолжим этот пример, но теперь рассмотрим вариант пакета с зарегистрированными точками входа. Пусть \texttt{setup.py} выглядит так
+\begin{lstlisting}[
+title = {\sffamily setup.py главного пакета},
+style = ironpython,
+numbers = none	
+]
+from setuptools import setup
+
+setup(
+    name = "snake_package",
+    entry_points = {
+	    "console_scripts" : [ # группа точек входа командных сценариев
+	        "snake = snake_package.snake:main", # вызывает функцию main() из snake_package/snake.py
+	    ],
+	    "snake_types" : [ # группа точек входа
+	        "normal = snake_package.snake:normal_snake", # точка входа
+	        "simple = snake_package.snake:simple_snake", # точка входа
+	    ],
+    }
+)
+\end{lstlisting}
+а основной модуль так
+\begin{lstlisting}[
+title = {\sffamily snake\_package/snake.py},
+style = ironpython,
+numbers = none	
+]
+import pkg_resources
+
+simple_snake = "simple_snake"
+
+normal_snake = "normal snake"
+
+def main():
+    for entry_point in pkg_resources.iter_entry_points("snake_types"):
+        print(f"{entry_point.name} --> {entry_point.load().upper()}")
+
+
+if __name__ == "__main__":
+    main()
+\end{lstlisting}
+
+В случае, если точка входа связанна с функцией, \texttt{entry\_point.load()} вернет ссылку на эту функцию (а не вызовет функцию!!!), а в случае переменной \texttt{entry\_point.load()} вернет значение этой переменной.
+
+Устанавливаем пакет
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+python setup.py develop
+\end{lstlisting}
+
+Теперь при вызове в командной строке консольного сценария \texttt{snake} будет вызвана одноименная точка из группы \texttt{console\_scripts}, которая вызовет связанную с этой точкой функцию \texttt{main} из модуля \texttt{snake\_package/snake.py}.
+
+Функция \texttt{main} с помощью \texttt{pkg\_resources.iter\_entry\_points} просканирует окружение на предмет наличия групп точек входа с именем \texttt{snake\_types}, и извлечет из ее точек имя и ссылку на связанную функцию.
+
+Что особенно интересно \texttt{pkg\_resources.iter\_entry\_points("snake\_types")} будет сканировать \emph{все} окружение, то есть, если в каком-то другом пакете будет объявлена группа точек входа \texttt{snake\_types} (в \texttt{setup.py}), то функция \texttt{main} нашего пакета об этом узнает
+\begin{lstlisting}[
+title = {\sffamily setup.py из какого-то другого пакета},
+style = ironpython,
+numbers = none	
+]
+...
+setup(
+    name = "foobar",
+    ...
+    packages = ["foobar"],
+    entry_points = {
+        "console_scripts" : [
+            "foobar-server = foobar.server:main",
+            ...
+        ]
+        "snake_types" : [ # регистрация группы точек входа
+            "pretty = add_module:pretty_snake", # вызовет переменную из модуля add_module.py в корне пакета foobar
+        ],
+    }
+)
+\end{lstlisting}
+
+
+
+Другой пример
+\begin{lstlisting}[
+title = {\sffamily setup.py},
+style = ironpython,
+numbers = none
+]
+from setuptools import setup
+
+setup(
+    name="foobar",
+    entry_points={ # точки входа
+        "console_scripts"  : [ # группа точек входа
+            "foobar-server = foobar.server:main", # вызовет функцию main() из foobar/server.py
+            "foobar-client = foobar.client:main", # вызовет функию main() из foobar/client.py
+        ],
+    }
+)
+\end{lstlisting}
+
+Здесь \texttt{foobar-server} и \texttt{foobar-client} -- это сценарии командной оболочки. Модуль \texttt{setuptools} читает \texttt{foobar-server = foobar.server:main} как 
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+<консольный_скрипт> = <путь к питоновскому модулю:функция>
+\end{lstlisting}
+создавая для каждого элемента консольную утилиту при установке пакета.
+
+Теперь если запустить
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+python setup.py develop
+\end{lstlisting}
+то в виртуальном окружении (например, \directory{C > Users > ADM > Anaconda3 > envs > env\_for\_tests > Scripts}) будут созданы следующие файлы
+\begin{itemize}
+	\item \texttt{foobar-client.exe},
+	
+	\item \texttt{foobar-client-script.py},
+	
+	\item \texttt{foobar-server.exe},
+	
+	\item \texttt{foobar-server-script.py}.
+\end{itemize}
+
+Например, файл \texttt{foobar-client-script.py} имеет следующее содержание
+\begin{lstlisting}[
+title = {\sffamily foobar-client-script.py},
+style = ironpython,
+numbers = none	
+]
+#!C:\Users\ADM\Anaconda3\envs\env_for_tests\python.exe
+# EASY-INSTALL-ENTRY-SCRIPT: 'foobar','console_scripts','foobar-client'
+import re
+import sys
+
+# for compatibility with easy_install; see #2198
+__requires__ = 'foobar'
+
+try:
+    from importlib.metadata import distribution
+except ImportError:
+    try:
+        from importlib_metadata import distribution
+    except ImportError:
+        from pkg_resources import load_entry_point
+
+
+def importlib_load_entry_point(spec, group, name):
+    dist_name, _, _ = spec.partition('==')
+    matches = (
+        entry_point
+        for entry_point in distribution(dist_name).entry_points
+        if entry_point.group == group and entry_point.name == name
+    )
+    return next(matches).load()
+
+
+globals().setdefault('load_entry_point', importlib_load_entry_point)
+
+
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw?|\.exe)?$', '', sys.argv[0])
+    sys.exit(load_entry_point('foobar', 'console_scripts', 'foobar-client')())
+\end{lstlisting}
+
+
+Точки входа организованны в группы: каждая группа -- это список пар ключ/значение. Пары ключ/значение используют формат \texttt{path.to.module:variable\_name}. 
+
+Простейший путь для визуализации точек входа, доступных в пакете, -- это использование пакета Entry Point Inspector. Его можно установить, запустив \texttt{pip install entry-point-inspector}. После установки доступна утилита командной строки \texttt{epi}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+$ epi group list
++------------------------------------------+
+| Name                                     |
++------------------------------------------+
+| apscheduler.executors                    |
+| apscheduler.jobstores                    |
+| apscheduler.triggers                     |
+| asdf_extensions                          |
+| babel.checkers                           |
+\end{lstlisting}
+
+Здесь каждый элемент таблицы -- это имя группы точек входа.
+
+Точка входа может быть использована \texttt{setuptools} для установки маленькой программы в системное окружение, которая вызывает определенную функцию одного из модулей. Используя \texttt{setuptools}, можно указать вызов функции, с которой \emph{начнется программа}, установив пару ключ / значение в точку входа группы:
+\begin{itemize}
+	\item ключ -- это имя устанавливаемого скрипта,
+	
+	\item а значение -- это путь функции (что-то вроде \texttt{my\_module.main}).
+\end{itemize}
+
+Для того чтобы работала связка с группами точек входа, требуется, чтобы главная функция пакета (как в данном случае, функция \texttt{main}) умела сканировать группу точек входа, а сами группы точек входа могут объявляться как в файле \texttt{setup.py} главного пакета, так и в файлах \texttt{setup.py} других пакетов.
+
+Создадим cron-подобного демона \texttt{pycrond}, который позволит любой программе Python регистрировать команду и выполнять ее каждые несколько секунд путем регистрации точки входа в группе \texttt{pytimed}.
+
+Проект выглядит так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+base_directory/
+  |-- pytimed.py
+  |-- setup.py
+  |-- hello
+        |-- hello.py
+\end{lstlisting}
+
+Вот реализация \texttt{pycrond} с применением \texttt{pkg\_resources} для поиска точек входа в программе под названием \texttt{pytimed.py}
+\begin{lstlisting}[
+title = {\sffamily pytimed.py},
+style = ironpython,
+numbers = none	
+]
+import pkg_resources
+import time
+
+
+def main():
+    seconds_passed = 0
+    while True:
+        for entry_point in pkg_resources.iter_entry_points("pytimed"): # сканирует окружение на предмет наличия группы pytimed
+            try:
+                seconds, callable = entry_point.load()() # потому что entry_point.load() возвращает лишь ссылку на функцию, а не вызывает ее
+            except:
+                pass
+            else:
+                if seconds_passed % seconds == 0:
+                    callable()
+        time.sleep(1)
+        seconds_passed += 1
+\end{lstlisting}
+
+\begin{lstlisting}[
+title = {\sffamily hello/hello.py},
+style = ironpython,
+numbers = none	
+]
+def print_hello():
+    print("Hello, world")
+    
+def say_hello():
+    return 2, print_hello
+\end{lstlisting}
+
+Наконец, файл \texttt{setup.py}
+\begin{lstlisting}[
+title = {\sffamily setup.py},
+style = ironpython,
+numbers = none	
+]
+from setuptools import setup
+
+setup(
+    name = "hello",
+    version = "1",
+    packages = ["hello"],
+    entry_points = {
+	    "pytimed" : [ # группа точек входа
+	        "hello = hello.hello:say_hello", # вызывается функция say_hello() модуля hello.py пакета hello
+	    ],
+    }
+)
+\end{lstlisting}
+
+Теперь 
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+python setup.py develop
+\end{lstlisting}
+
+Скрипт \texttt{setup.py} регистрирует точку входа в группе \texttt{pytimed} с ключом \texttt{hello} и значением, обращенным к функции \texttt{hello.hello.say\_hello}.
+
+Как только с помощью \texttt{setup.py} устанавливается пакет -- например, через \texttt{pip install}, -- скрипт \texttt{pytimed} обнаруживает вновь добавленную точку входа.
+
+При импорте \texttt{pytimed} отсканирует группу \texttt{pytimed} и найдет ключ \texttt{hello}. Далее он вызовет функцию \texttt{hello.hello.say\_hello}, получив два значения: количество секунд для паузы между каждым вызовом и функцию для вызова
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+>>> import pytimed
+>>> pytimed.main()
+Hello, world
+Hello, world
+...
+\end{lstlisting}
+
+Возможности, предоставляемые этим механизмом, обширны: можно без проблем создавать драйверы, устанавливать хуки и расширения.
+
+Точки входа делают процесс поиска и динамической загрузки кода легче для развертываемого пакета, но это не единственное их применение. Любое приложение может предлагать и регистрировать точки входа или их группы для использования по своему усмотрению.
+
+Библиотека \texttt{stevedore} обеспечивает поддержку динамических плагинов на основе ранее продемонстрированного механизма. Рассмотренный пример уже очень прост, но его можно еще упростить в следующем скрипте
+\begin{lstlisting}[
+title = {\sffamily pytimed\_stevedore.py},
+style = ironpython,
+numbers = none
+]
+from stevedore.extension import ExtensionManager
+import time
+
+def main():
+    seconds_passed = 0
+    extensions = ExtensionManager("pytimed", invoke_on_load=True)
+    while True:
+        for extension in extensions:
+            try:
+                seconds, callable = extension.obj
+            except:
+                pass
+            else:
+                if seconds_passed % seconds == 0:
+                    callable()
+        time.sleep(1)
+        seconds_passed += 1
+\end{lstlisting}
+
+Класс \texttt{ExtensionManager}, принадлежащий \texttt{stevedore}, обеспечивает простой путь для загрузки всех расширений группы точек входа. Имя передается в качестве аргумента. Аргумент \texttt{invoke\_on\_load=True} обеспечивает, при ее нахождении, вызов каждой функции группы. Это делает результаты доступными напрямую из атрибута \texttt{obj}, принадлежащего расширению.
+
+Если нужно загрузить и запустить только одно расширение из группы точек входа, то это можно сделать с помощью класса \texttt{stevedore.driver.DriverManager}
+\begin{lstlisting}[
+title = {\sffamily Применение stevedore для запуска одного расширения из точки входа},
+style = ironpython,
+numbers = none	
+]
+from stevedore.driver import DriverManager
+import time
+
+def main(name):
+    seconds_passed = 0
+    seconds, callable = DriverManager("pytimed", name, invoke_on_load=True).driver
+    while True:
+        if seconds_passed % seconds == 0:
+            callable()
+        time.sleep(1)
+        seconds_passed += 1
+        
+main("hello")
+\end{lstlisting}
+
+В этом случае только одно расширение загружается и выбирается по имени. Это позволяет быстро создать систему драйверов, в которой программа загружает и использует только одно расширение.
+
+\section{Тестирование в Python}
+
+Хранить тесты нужно в поддиректории \texttt{tests} пакета, приложения или библиотеки, к которым они относятся. Использование иерархии в дереве теста, которая повторяет иерархию модуля, сделает тесты более управляемыми. Это значит, что тест для кода \texttt{mylib/foobar.py} необходимо размещать в \texttt{mylib/tests/test\_foobar.py}. 
+
+Для маленьких проектов с простым применением -- пакет \texttt{pytest}. Пакет \texttt{pytest} предоставляет команду \texttt{pytest}, которая загружает каждый файл, имя которого начинается на \texttt{test\_}, и затем выполняет все функции внутри каждого файла, если они тоже начинаются на \texttt{test\_}.
+
+Запустить тест можно так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pytest -v test_true.py
+\end{lstlisting}
+
+Флаг \verb|-v| выводит имя каждого теста в отдельной строке. Если тест не пройден, вывод меняется и отображается информация об ошибке.
+
+Тест не проходит, как только возникает исключение \texttt{AssertationError}.
+
+Чтобы пропустить тест удобно пользоваться декоратором \texttt{pytest.mark.skip()}. Этот декоратор безоговорочно пропускает декорированную функцию, поэтому его можно использовать всегда, когда нужно пропустить тест
+\begin{lstlisting}[
+title = {\sffamily Пропуск тестов},
+style = ironpython,
+numbers = none	
+]
+imoprt pytest
+
+try:
+    import mylib
+except ImportError:
+    mylib = None
+    
+@pytest.mark.skip("Do not run this")
+def test_fail():
+    assert False
+    
+@pytest.mark.skipif(mylib is None, reason="mylib is not available")
+def test_mylib():
+    assert mylib.foobar() == 42
+    
+def test_skip_at_runtime():
+    if True:
+        pytest.skip("Finally I don't want to run it")
 \end{lstlisting}
 
 
@@ -1153,6 +1710,160 @@ $ virtualenv env
 $ source env/bin/actiavte # для Linux/MacOs etc
 $ env\Scripts\activate.bat # для Windows
 \end{lstlisting}
+
+
+\section{Тонкости импортирования модулей и пакетов в Python}
+
+ОЧЕНЬ ВАЖНО: при импорте \emph{модуля} Python выполняет \emph{весь} код в этом модуле
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+import something_module  # весь код модуля выполнился
+\end{lstlisting}
+
+ОЧЕНЬ ВАЖНО: при импорте \emph{пакета} Python выполняет модуль \verb|__init__.py| этого пакета и импортированные имена становятся частью пространства имен пакета
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+import something_package  # выполнился модуль __init__.py этого пакета
+\end{lstlisting}
+
+Пример. Пусть структура пакетов выглядит так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+root_dir/
+|-- packageA/
+    |-- __init__.py  # from packageA import moduleA
+    |                # from packageA import packageB
+    |                # from packageA import foo
+    |-- moduleA.py   # здесь объявлена функция mainA()
+    |-- packageB/
+    |   |-- __init__.py  # from packageA.packageB import moduleB
+    |   |-- moduleB.py   # здесь объявлена функция mainB()
+    |-- foo.py
+\end{lstlisting}
+
+То есть в модуле \verb|__init__.py| пакета \texttt{packageA} лежит такой код
+\begin{lstlisting}[
+title = {\sffamily packageA/\_\_init\_\_.py},
+style = bash,
+numbers = none	
+]
+# используются абсолютные пути от корня директории, из-под которой запускается
+# интерактивная Python-сессия или базовый Python-сценарий
+from packageA import moduleA
+from packageA import packageB
+from packageA import foo
+\end{lstlisting}
+
+Другими словами, при импорте пакета \texttt{packageA} будет выполнен модуль \verb|__init__.py|, который добавит в пространство имен пакета имена \texttt{moduleA}, \texttt{packageB} и \texttt{foo}. Это означает, что эти модули и пакет будут доступны через обращение к пакету \texttt{packageA}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+import packageA
+
+packageA.foo
+packageA.moduleA
+packageA.packageB
+\end{lstlisting}
+
+Убедится в том, что при запуске главного сценария из-под корневой директории будут доступны для импорта через имя пакета \texttt{packageA} имена \texttt{moduleA}, \texttt{packageB} и \texttt{foo} можно так
+\begin{lstlisting}[
+title = {\sffamily вызов из-под корневой директории},
+style = bash,
+numbers = none
+]
+import pkgutil
+
+list(pkgutil.iter_modules(["./packageA"]))
+# [ModuleInfo(module_finder=FileFinder('./packageA'), name='foo', ispkg=False),
+# ModuleInfo(module_finder=FileFinder('./packageA'), name='moduleA', ispkg=False),
+# ModuleInfo(module_finder=FileFinder('./packageA'), name='packageB', ispkg=True)]
+\end{lstlisting}
+
+Функцию \texttt{pkgutil.iter\_modules(path=search\_path)} можно использовать, чтобы получить список всех модулей/пакетов, которые можно импортировать по заданному пути.
+
+При импорте пакета \texttt{packageB} аналогично будет выполнен модуль \texttt{\_\_init\_\_.py} этого пакета
+\begin{lstlisting}[
+title = {\sffamily packageA/packageB/\_\_init\_\_.py},
+style = bash,
+numbers = none	
+]
+# используются абсолютные пути от корня директории, из-под которой запускается
+# интерактивная Python-сессия или базовый Python-сценарий
+from packageA.packageB import moduleB
+\end{lstlisting}
+
+Таким образом, модуль \texttt{moduleB} становится частью пространства имен пакета \texttt{packageB}. То есть при импорте пакета \texttt{packageB} к модулю \texttt{moduleB} можно будет обраться так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+import pkgutil
+
+import packageA.packageB as pkB
+
+pkB.moduleB
+list(pkgutil.iter_modules(["./packageA/packageB"]))
+# [ModuleInfo(module_finder=FileFinder('./packageA/packageB'), name='moduleB', ispkg=False)]
+\end{lstlisting}
+
+Первым элементом списка путей \texttt{sys.path} будет директория, в которой лежит выполняемый Python-сценарий.
+
+Python ищет модули в следующем порядке
+\begin{itemize}
+	\item Модули стандартной библиотеки (например, \texttt{math}, \texttt{os} etc.),
+	
+	\item Модули/пакеты, указанные в \texttt{sys.path}:
+	\begin{itemize}
+		\item Если интерпретатор запущен в интерактивном режиме:
+		\begin{itemize}
+			\item \texttt{sys.path[0]} -- пустая строка, \verb|""|. Это значит, что Python будет искать в текущей директории, из-под которой был запущен интерпретатор,
+		\end{itemize}
+	
+	    \item Если сценарий был запущен командой \texttt{python <script.py>}:
+	    \begin{itemize}
+	    	\item \texttt{sys.path[0]} -- это путь к \texttt{<script.py>}.
+	    \end{itemize}
+	\end{itemize}
+
+    \item Директории, указанные в переменной среды \texttt{PYTHONPATH},
+    
+    \item Директория по умолчанию, которая зависит от дистрибутива Python.
+\end{itemize}
+
+\remark{%
+При запуске сценария для \texttt{sys.path} важна не директория, из-под которой запускается сценарий, а \emph{путь к самому сценарию}
+}
+
+У модуля \verb|__init__.py| есть две функции:
+\begin{itemize}
+	\item Превратить папку со скриптами в импортируемый пакет модулей (до версии Python 3.3, в версиях Python 3.3+ в этом нет необходимости, так как все директории по умолчанию считаются пакетами),
+	
+	\item Выполнить код инициализации пакета.
+\end{itemize}
+
+Чтобы импортировать модуль/пакет из директории, которая находится не в директории запущенного сценария, этот модуль/пакет должен быть в пакете.
+
+В момент, когда пакет или один из его модулей импортируется в первый раз, Python выполняет \verb|__init__.py| в корне пакета, если такой файл существует. Все объекты, определенные в \verb|__init__.py|, считаются частью пространства имен пакета.
+
+\remark{%
+Если Python-сценарий запускается из-под пакета (директории, содержащей или не содержащей модуля \texttt{\_\_init\_\_.py}), то модуль \texttt{\_\_init\_\_.py} этого пакета не вызывается, так как директория, в которой находится сценарий \emph{пакетом не считается}
+}
+
+При \emph{абсолютном} импорте используется полный путь от начала корневой папки проекта к нужному модулю.
+
+При \emph{относительном} импорте используется относительный путь, начиная с местоположения текущего модуля и заканчивая местоположением интересующего модуля.
+
+\remark{%
+Как правило, рекомендуется использовать абсолютный импорт
+}
+
 
 \section{Автоматический анализ кода с платформой DeepsSource}
 
@@ -1558,6 +2269,38 @@ mse = mean_squared_error(y_test, y_pred)
 \subsection{Особенности реализации в пакете \texttt{LightGBM}}
 
 \subsection{Особенности реализации в пакете \texttt{CatBoost}}
+
+
+\section{Потоки и процессы. Глобальная блокировка интерпретатора}
+
+\emph{Процесс} -- просто программа в ходе ее выполнения. \emph{Потоки} подобны процессам, за исключением того, что все они выполняются в пределах одного и того же процесса, следовательно используют один и тот же контекст. 
+
+Все потоки, организованные в одном процессе, используют общее пространство данных с основным процессом, поэтому могут обмениваться информацией или взаимодействовать друг с другом с меньшими сложностями по сравнению с отдельными процессами. Потоки, как правило, выполняются параллельно.
+
+Если два или несколько потоков получают доступ к одному и тому же фрагменту данных, то в зависимости от того, в какой последовательности происходит доступ, могут возникать несогласованные результаты \cite[\strbook{184}]{chun:2015}.
+
+Выполнением кода Python управляет виртуальная машина Python (называемая также \emph{главным циклом интерпретатора}). Язык Python разработан таким образом, чтобы в этом главном цикле мог выполняться \emph{только один поток управления}.
+
+В интерпретаторе Python могут эксплуатироваться \emph{несколько потоков}, но в каждый отдельный момент времени интерпретатором выполняется \emph{строго один поток} \cite[\strbook{185}]{chun:2015}.
+
+Для управления доступом к виртуальном машине Python применяется \emph{глобальная блокировка интерпретатора} (GIL). Именно эта блокировка обеспечивает то, что выполняется \emph{один и только один поток}.
+
+Вообще говоря, применение нескольких потоков в программе может способствовать ее улучшению. Однако в интерпретаторе Python применяется глобальная блокировка, которая накладывает свои ограничения, поэтому \emph{многопоточная} организация является более подходящей для приложений, ограничиваемых пропускной способностью ввода-вывода\footnote{Так называемые IO-bound задачи} (при вводе-выводе происходит освобождение глобальной блокировки интерпретатора, что способствует повышению степени распараллеливания), а не приложений, ограничиваемых пропускной способностью процессора\footnote{CPU-bound задачи}. В последнем случае для достижения более высокой степени распараллеливания необходим иметь возможность \emph{параллельного выполнения процессов} несколькими ядрами или \emph{процессорами} \cite[\strbook{229}]{chun:2015}.
+
+Глобальная блокировка GIL защищает состояние интерпретатора от вытесняющей (приоритетной многопоточности), когда один поток пытается взять на себя управление программой, прерывая другой поток. Если такое прерывание происходит в неподходящий момент времени, то это может разрушить состояние интерпретатора.
+
+\textbf{Выводы}:
+\begin{itemize}
+	\item для приложений, ограниченных пропускной способностью ввода-вывода следует использовать
+	\begin{itemize}
+		\item многопоточность,
+		
+		\item приемы асинхронного программирования,
+	\end{itemize}
+
+    \item для приложений, ограниченных пропускной способностью процессора следует иметь возможность выполнения процессов несколькими процессорами.
+\end{itemize}
+
 
 \section{Форматирование строк в языке \texttt{Python}}
 
@@ -6068,6 +6811,8 @@ All done!
 	\bibitem{karau:2018}{\emph{Карау Х.}, \emph{Уоррен Р.} Эффективный Spark. Масштабирование и оптимизация. -- СПб. Питер, 2018. -- 352 с.}
 	
 	\bibitem{raschka:2019}{\emph{Рашка С.}, \emph{Мирджалили В.} Python и машинное обучение: машинное и глубокое обучение с использованием Python, scikit-learn и TensorFlow. -- СПб.: ООО <<Диалектика>>, 2019. -- 656 с.}
+	
+	\bibitem{chun:2015}{\emph{Чан У.} Python: создание приложений. Библиотека профессионала, 3-е изд. -- М.: ООО <<И.Д. Вильямс>>, 2015. -- 816 с.}
 \end{thebibliography}
 
 \end{document}

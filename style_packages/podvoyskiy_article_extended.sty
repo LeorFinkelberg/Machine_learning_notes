@@ -64,6 +64,7 @@
 \definecolor{deepgreen}{rgb}{0,0.5,0}
 \definecolor{codegreen}{rgb}{0,0.6,0}
 \definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{commentcolor}{HTML}{E23E57}
 %\definecolor{codepurple}{HTML}{C42043}
 %\definecolor{backcolor}{HTML}{F2F2F2}
 \definecolor{bookColor}{cmyk}{0,0,0,0.90}
@@ -219,7 +220,7 @@
 	keywordstyle = \color{deepblue},  % стиль ключевых слов
 	stringstyle = \itshape\color{deepgreen},  % стиль строк
 	emphstyle = \color{blue},  % цвет идентифиакторов, которые включены в группу emph = {} в листингах
-	commentstyle = \color{deepred}\itshape,  % коментарии зеленым цветом
+	commentstyle = \color{commentcolor}\itshape,  % коментарии зеленым цветом
 	morestring=[s]{'''}{'''},
 	morestring=[s]{"""}{"""}
 }
@@ -229,7 +230,7 @@
     basicstyle = \fontsize{10pt}{10pt}\ttfamily,
     %keywordstyle = \color{deeppurple},
     stringstyle = \color{deepgreen},
-    commentstyle = \color{red}\itshape
+    commentstyle = \color{commentcolor}\itshape
 }
 
 
@@ -254,7 +255,7 @@
 \lstdefinestyle{sql}{
     language = SQL,
     %backgroundcolor=\color{backcolor},   
-    commentstyle=\itshape\color{red},
+    commentstyle=\itshape\color{commentcolor},
     keywordstyle=\color{blue},
     keywords = {recursive, with, union, all, select, from, group, by, where, as, in,
                 when, else, then, case, end, order, update, set, show, to, and, delete,
