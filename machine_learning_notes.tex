@@ -1505,6 +1505,8 @@ pytest -v test_true.py
 
 Тест не проходит, как только возникает исключение \texttt{AssertationError}.
 
+\subsection{Пропуск тестов}
+
 Чтобы пропустить тест удобно пользоваться декоратором \texttt{pytest.mark.skip()}. Этот декоратор безоговорочно пропускает декорированную функцию, поэтому его можно использовать всегда, когда нужно пропустить тест
 \begin{lstlisting}[
 title = {\sffamily Пропуск тестов},
@@ -1530,6 +1532,593 @@ def test_skip_at_runtime():
     if True:
         pytest.skip("Finally I don't want to run it")
 \end{lstlisting}
+
+\subsection{Запуск определенных тестов}
+
+При использовании \texttt{pytest} часто возникает необходимость запустить только определенные тесты. Можно выбрать какие запустить, передав их директорию или файлы в качестве аргументов в командную строку. Например, вызов \texttt{pytest test\_one.py} запускает только \texttt{test\_one.py}. Пакет \texttt{pytest} также принимает директорию в качестве агрумента, и в этом случае он рекурсивно просмотрит папки и запустит все файлы, соответствующие шаблону \texttt{test\_*.py}.
+
+Обычно разработчик группирует тесты по типам и функциональности, а не по именам. Библиотека \texttt{pytest} обеспечивает динамическую систему меток, позволяющую маркировать тесты с помощью ключевого слова, которое затем может быть использовано в фильтре. Для маркировок тестов таким способом следует использовать опцию \verb|-m|. Если настроить пару тестов вроде этих
+\begin{lstlisting}[
+title = {\sffamily test\_mark.py},
+style = ironpython,
+numbers = none	
+]
+import pytest
+
+@pytest.mark.skip("Do not run this") # если нужно пропустить тест
+@pytest.mark.mymark # метка
+def test_something():
+    a = ["a", "b"]
+    assert a == a
+    
+
+def test_something_else():
+    assert False
+\end{lstlisting}
+то можно использовать аргумент \verb|-m| с \texttt{pytest} для запуска только одного из них
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pytest -v test_mark.py -m mymark
+\end{lstlisting}
+
+Чтобы при запуске \texttt{pytest -v} не выводились ненужные предупреждения о якобы опечатках в именах меток <<\emph{Unknown pytest.mark.params - is this a typo?}>>, нужно зарегистрировать пользовательскую метку. 
+
+Это можно сделать с помощью конфигурационных файлов \url{https://docs.pytest.org/en/stable/mark.html}. Например, с помощью \texttt{pyproject.toml}
+\begin{lstlisting}[
+title = {\sffamily pyproject.toml},
+style = bash,
+numbers = none	
+]
+# после двоеточия указывается необязательное описание
+[tool.pytest.ini_options]
+markers = [
+    "mymark: marks test (deselect with '-m \"not mymark\"')",
+    "DB",
+    "disttest",
+    # "params"
+]
+...
+\end{lstlisting}
+
+Метка \verb|-m| принимает и более сложные выражения, поэтому можно, например, запустить все тесты, которые \textit{не} имеют метки
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pytest test_mark.py -m 'not mymark'
+\end{lstlisting}
+
+В примере \texttt{pytest} выполнит каждый тест, не отмеченный \texttt{mymark}. \texttt{pytest} принимает сложные выражения, состоящие из \texttt{or}, \texttt{and} и \texttt{not}, что позволяет производить сложную фильтрацию.
+
+\subsection{Параллельный запуск тестов}
+
+Запуск тестовых наборов может отнимать много времени. По умолчанию \texttt{pytest} запускает тесты последовательно, в определенном порядке. Так как большинство компьютеров имеют многоядерные процессоры, можно ускориться, если произвести разделение тестов для запуска на нескольких ядрах.
+
+Для этого в \texttt{pytest} есть плагин \texttt{pytest-xdist}. Этот плагин расширяет командную строку \texttt{pytest} аргументом \verb|--numprocesses| (сокращенно \verb|-n|), принимающим в качестве аргумента количество используемых ядер.
+
+Запуск \texttt{pytest -n 4} запустит тестовый набор в четырех параллельных процессах, сохраняя баланс между загруженностью доступных ядер.
+
+Плагин также принимает ключевое слово \texttt{auto}. В этом случае количество доступных ядер будет возвращено автоматически
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pytest -v test_true.py -n auto
+\end{lstlisting}
+
+Вот еще несколько полезных опций \texttt{pytest}:
+\begin{itemize}
+	\item \verb|--tb=[auto/long/short/line/native/no]|: управляет стилем трассировки,
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+# с включенной трассировкой
+pytest --tb=no -q test_true.py
+\end{lstlisting}
+	
+	\item \verb|-l / --showlocals|: отображает локальные переменные рядом с трассировкой стека,
+	
+	\item \verb|--lf / --last-failed|: запускает только те тесты, которые завершились неудачей,
+	
+	\item \verb|-x / --exitfirst|: останавливает тестовую сессию при первом сбое,
+	
+	\item \verb|--pdb|: запускает интерактивный сеанс отладки в точке сбоя
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+# выводим не более 3 ошибок с подробным описанием
+pytest --tb=no -v --lf --maxfial=3
+# запустить сеанс отладки
+pytest -v --lf -x --pdb
+\end{lstlisting}
+
+    В сессии \texttt{pdb} можно использовать следующие команды\footnote{Навигационные команды \texttt{step} и \texttt{next} не очень полезны, так как мы находимся прямо в операторе \texttt{assert}}
+    \begin{itemize}
+    	\item \texttt{p expr}: вывести значение \texttt{expr},
+    	
+    	\item \texttt{l / list}: вывести строку точки сбоя и строки окружения (5 сверху и 5 снизу),
+    	
+    	\item \texttt{a / args}: вывести аргументы текущей функции,
+    	
+    	\item \texttt{u / up}: переместиться на один уровень вверх по трассе стека,
+    	
+    	\item \texttt{d / down}: переместиться на один уровень вниз по трассе стека,
+    	
+    	\item \texttt{q / quit}: завершить сеанс.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Создание объектов, используемых в тестах, с помощью фикстур}
+
+В модульном тестировании часто придется выполнять набор стандартных операций до и после запуска теста, и эти инструкции задействуют определенные компоненты. Например, может понадобиться объект, который будет выражать состояние конфигурации приложения, и он должен инициализироваться перед каждым тестированием, а потом сбрасываться до начальных значений после выполнения. Аналогично, если тест зависит от временного файла, этот файл должен создаваться перед тестом и удаляться после. Такие компоненты называются \emph{фикстурами}. Они устанавливаются перед тестированием и удаляются после его выполнения.
+
+В \texttt{pytest} фикстуры объявляются как простые функции. Функция фикстуры должна возвращать желаемый объект, чтобы в тестировании, где она используется, мог использоваться этот объект.
+
+Вот пример простой фикстуры
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import pytest
+import psycopg2
+
+
+@pytest.fixture # фикстура
+def database():
+    conn = psycopg2.connect("postgresql://postgres@localhost:5432/demo")
+    return conn
+   
+@pytest.mark.DB  # <-- NB
+def test_insert(database):
+    cur = database.cursor()
+    cur.execute("TABLE tickets LIMIT 5;")
+    res = cur.fetchall()
+    assert res[0][1] == "06B046"
+\end{lstlisting}
+
+Вызов
+
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pytest -v test_true.py -m DB
+\end{lstlisting}
+
+Фикстура базы данных автоматически используется любым тестом, который имеет аргумент \texttt{database} в своем списке. Функция \texttt{test\_insert()} получит результат функции \texttt{database()} в качестве первого аргумента и будет использовать этот результат по своему усмотрению. При таком использовании фикстуры не нужно повторять код инициализации базы данных несколько раз.
+
+Еще одна распространенная особенность тестирования кода -- это возможность удалять лишнее после работы фикстуры. Например, закрыть соединение с базой данных. Реализация фикстуры в качестве генератора добавит функциональность по очистке проверенных объектов
+\begin{lstlisting}[
+title = {\sffamily test\_true.py},
+style = ironpython,
+numbers = none	
+]
+import psycopg2
+
+@pytest.fixture
+def get_cursor(): # функция-фикстура-генератор
+    conn = psycopg2.connect("postgresql://postgres@localhost:5432/demo")
+    cur = conn.cursor()
+    yield cur    # отдать объект курсора
+    cur.close()  # закрыть после теста объект курсора
+    conn.close() # закрыть после теста объект соединения
+
+
+@pytest.mark.DB
+def test_fetch(get_cursor):
+    # cur = database.cursor()
+    get_cursor.execute("table tickets limit 5;")
+    res = get_cursor.fetchall()
+    assert res[0][1] == "06B046"
+\end{lstlisting}
+
+Вызов \texttt{pytest -v test\_true.py -m DB}. Здесь код после утверждения \texttt{yield} выполнится только в конце теста.
+
+Закрытие соединения с базой данных для каждого теста может вызывать неоправданные траты вычислительных мощностей, так как другие тесты могут использовать уже открытое соединение. В этом случае можно передать аргумент \texttt{scope} в декоратор фикстуры, \emph{указывая область ее видимости}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import pytest
+
+@pytest.fixture(scope="module") # <-- NB
+def database():
+    conn = psycopg2.connect("postgresql://postgres@localhost:5432/demo")
+    cur = conn.cursor()
+    yield cur
+    cur.close()
+    conn.close()
+    
+def test_fetch():
+    ...
+\end{lstlisting}
+
+Указав параметр \texttt{scope="module"}, мы инициализировали фикстуру единожды для всего модуля, и теперь открытое соединение с базой данных будет доступно для всех тестовых функций, запрашивающих его.
+
+\subsection{Параметрические фикстуры и тестовые функции}
+
+Параметрические фикстуры запускаются несколько раз все тесты, где они используются единожды для каждого указанного параметра.
+
+Запустим одного теста дважды, но с разными параметрами
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import pytest
+import psycopg2
+
+
+@pytest.fixture(params=["mysql", "postgresql"])
+def get_cursor(request):
+    conn = psycopg2.connect(f"{request.param}://postgres@localhost:5432/demo")
+    cur = conn.cursor()
+    yield cur
+    cur.close()
+    conn.close()
+
+@pytest.mark.DB
+def test_fetch(get_cursor):
+    get_cursor.execute("table tickets limit 5;")
+    res = get_cursor.fetchall()
+    assert res[0][1] == "06B046"
+\end{lstlisting}
+
+ВАЖНО: \texttt{request} -- это специальное ключевое слово.
+
+А есть еще \emph{параметрические тестовые функции}, которые могут принимать набор имен переменных и набор значений для этих переменных
+\begin{lstlisting}[
+title = {\sffamily test\_true.py},
+style = ironpython,
+numbers = none	
+]
+...
+@pytest.mark.params
+@pytest.mark.parametrize(
+    [
+        "alpha", "expected_multiplier" # параметры
+    ],
+    [
+        (1.5, 192), (3, 255) # значения параметров (два расчетных случая)
+    ]
+)
+def test_random_brightness(alpha, expected_multiplier):
+    assert (1.5, 192) == (alpha, expected_multiplier)
+...
+\end{lstlisting}
+
+Вызов \texttt{pytest -v test\_true.py -m params}
+
+\subsection{Управляемые тесты с объектами-пустышками}
+
+Объекты-пустышки (или заглушки, mock objects) -- это объекты, которые имитируют поведение реальных объектов приложения, но в особенном, управляемом состоянии. Они наиболее полезны в создании окружений, которые досконально описывают условия проведения теста. Можно заменить все объекты, кроме тестируемого, на объекты-пустышки и изолировать его, а также создать окружение для тестирования кода.
+
+Один из случаев их использования -- создание HTTP-клиента. Практически невозможно (или точнее, невероятно сложно) создать HTTP-сервер, на котором можно прогнать все варианты ситуаций и сценарии для каждого возможного значения. HTTP-клиенты особенно сложно тестировать на сценарии ошибок.
+
+Начиная с версии Python 3.3 \texttt{mock} объединен с библиотекой \texttt{unittest.mock}. Поэтому можно использовать фрагмент кода, приведенный ниже, для обеспечения обратной совместимости между Python 3.3 и более ранними версиями
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+try:
+    from unittest import mock
+except ImportError:
+    import mock
+\end{lstlisting}
+
+Библиотека \texttt{mock} очень проста в использовании. Любой атрибут, доступный для объекта \texttt{mock.Mock}, создается динамически во время выполнения программы. Такому атрибуту может быть присвоено любое значение.
+
+Можно также динамически создавать \emph{метод} для изменяемого объекта
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import numpy as np
+from unittest import mock
+
+m = mock.Mock()
+m.compute_effect.return_value = np.random.RandomState(42).randn()
+m.compute_effect() # 0.4967141530112327
+m.compute_effect("blah", "blah") # 0.4967141530112327
+\end{lstlisting}
+
+Объект \texttt{mock.Mock} теперь имеет метод \texttt{compute\_effect()}, который возвращает псевдослучайное число. Он принимает любой тип аргумента, пока проверка того, что это за аргумент, отсутствует.
+
+Библиотека \texttt{mock} также может быть использована для замены функции, метода или объекта из внешнего модуля
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from unittest import mock
+import os
+
+def fake_os_unlink(path):
+    raise IOError("Testing")
+
+with mock.patch("os.unlink", fake_os_unlink): # заменяте функцию os.unlink в нижеприведенной строке на fake_os_unlink
+    os.unlink("foobar") # то есть будет fake_os_unlink("foobar")
+\end{lstlisting}
+
+С методом \texttt{mock.patch()} можно изменить любую часть внешнего кода, заставив его вести себя так, чтобы протестировать все условия приложения
+\begin{lstlisting}[
+title = {\sffamily mock\_sample.py},
+style = ironpython,
+numbers = none	
+]
+import pytest
+import requests
+from unittest import mock
+
+
+class WhereIsPythonError(Exception):
+    pass
+
+
+def is_python_still_a_programming_language():
+    try:
+        r = requests.get("http://python.org")
+    except IOError:
+        pass
+    else:
+        if r.status_code == 200:
+            return "Python is a programming language" in r.content
+    raise WhereIsPythonError("Somthing bad happened")
+
+
+def get_fake_get(status_code, content):
+    m = mock.Mock()  # создаем объект-заглушку
+    m.status_code = status_code  # создаем атрибут
+    m.content = content          # создаем атрибут
+
+    def fake_get(url):
+        return m
+
+    return fake_get
+
+
+def raise_get(url):
+    raise IOError(f"Unable to fetch url {url}")
+
+
+@mock.patch("requests.get", get_fake_get(
+    200, "Python is a programming language for sure"))
+def test_python_is():
+    assert is_python_still_a_programming_language() is True
+
+
+@mock.patch("requests.get", get_fake_get(
+    200, "Python is no more a programming language"))
+def test_python_is_not():
+    assert is_python_still_a_programming_language() is False
+
+
+@mock.patch("requests.get", get_fake_get(404, "Whatever"))
+def test_bad_status_code():
+    with pytest.raises(WhereIsPythonError):
+        is_python_still_a_programming_language()
+
+
+@mock.patch("requests.get", raise_get)
+def test_ioerror():
+    with pytest.raises(WhereIsPythonError):
+        is_python_still_a_programming_language()
+\end{lstlisting}
+
+Этот листинг реализует тестовый случай, который ищет все экземпляры строки <<\emph{Python is a programming language}>> на сайте \texttt{http://python.org}. Не существует варианта, при котором тест не найдет ни одной заданной строки на выбранной веб-странице. Чтобы получить отрицательный результат, необходимо изменить страницу, а этого сделать нельзя. Но с помощью \texttt{mock} можно пойти на хитрость и изменить поведение запроса так, чтобы он возвращал ответ-пустышку с выдуманной страницей, не содержащей заданной строки. Это позволит протестировать отрицательный сценарий, в котором \texttt{http://python.org} не содержит заданной строки, и убедиться, что программа обрабатывает такой случай корректно.
+
+Чуть подробнее об этом примере. Когда мы в командной строке запускаем \texttt{pytest -v mock\_sample.py}, происходит следующее: \item вызывается функция \texttt{test\_python\_is()}, <<разворачивается>> код функции \\ \texttt{is\_python\_still\_a\_programming\_language()} как строка и \texttt{mock.patch} в этой функции замещает подстроку \texttt{requests.get} ссылкой на функцию \texttt{fake\_get}, вызов которой вернет объект-заглушку с атрибутами \texttt{status\_code} и \texttt{content}; поскольку в данном случае \texttt{status\_code} имеет значение 200, а \texttt{content} -- <<\emph{Python is a programming language for sure}>>, условие выполняется и функция \texttt{is\_python\_still\_a\_programming\_language()} возвращает \texttt{True} (т.е. тест пройден).
+
+Далее вызывается функция \texttt{test\_python\_is\_not()}. Снова код функции\\ \texttt{is\_python\_still\_a\_programming\_language()} разворачивается как строка, в которой \texttt{mock.patch} замещает \texttt{requests.get} ссылкой на \texttt{get\_fake}, которая возвращает объект-заглушку с атрибутами \texttt{status\_code=200} и \texttt{content} <<\emph{Python is no more a programming language}>>.\\ Функция \texttt{is\_python\_still\_a\_programming\_language()} возвращает \texttt{False}. Условие выполняется, тест пройден.
+
+В случае функции \texttt{test\_bad\_status\_code()} возбуждается исключение \texttt{WhereIsPythonError}, которое обрабатывается соответствующим менеджером контекста. Тест пройден.
+
+И, наконец, четвертая тестовая функция \texttt{test\_ioerror()}. Здесь, как и раньше, код функции \texttt{is\_python\_still\_a\_programming\_language()} читается в строку и \texttt{mock.patch} замещает подстроку \texttt{requests.get} ссылкой на функцию \texttt{raise\_get}, котрая возбуждает исключение \texttt{IOError}. Когда это происходит в функции \texttt{is\_python\_still\_a\_programming\_language()} возбуждается исключение \texttt{WhereIsPythonError}, которое перехватывается менеджером контекста. Тест пройден.
+
+
+ВАЖНО: декоратор \verb|@mock.patch("f1", f2)| заменяет одну функцию, представленную в виде строки, ссылкой на другую функцию, рассматривая код задекорированной функции как строку.
+
+\subsection{Выявление непротестированного кода с помощью \texttt{coverage}}
+
+Отличным дополнением для модульного тестирования является инструмент  \texttt{coverage}, который находит непротестированные части кода. Он использует инструменты анализа и отслеживания кода для выявления тех строк, которые не были выполнены. В модульном тестировании он может выявить, какие части кода были задействованы многократно, а какие вообще не использовались. 
+
+Покрытие кода является показателем того, какой процент тестируемого кода тестируется (покрывается) набором тестов.
+
+Инструменты покрытия кода отлично подходят для того, чтобы сообщить, какие части системы полностью пропущены тестами.
+
+Инструмент оценки покрытия кода тестами \texttt{coverage} удобнее всего вызывать из-под \texttt{pytest}. Поскольку \texttt{coverage} является одной из зависимостей \texttt{pytest-cov}, достаточно установить \texttt{pytest-cov} и он притянет за собой \texttt{coverage.py}.
+
+Опция \verb|--cov| \texttt{pytest} включает вывод отчета \texttt{coverage} в конце тестирования. Необходимо передать имя пакета в качестве аргумента, чтобы плагин должным образом отфильтровал отчет. Вывод будет содержать стоки кода, которые не были выполнены, а значит, не тестировались. Все, что останется, -- открыть редактор и написать тест для этого кода
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pytest -v --cov=.
+\end{lstlisting}
+
+Еще можно добавить к \texttt{pytest} флаг \verb|--cov-report=html|. Тогда в директории, из-под которой запускается команда
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pytest -v --cov=. --cov-report=html
+\end{lstlisting}
+будет создана директория \texttt{htmlcov}, содержащая html-страницы. Каждая страница покажет, какие части исходного кода были или не были запущены.
+
+Команда \verb|pytest --cov=src| (при условии, что тестируемый код находится в \texttt{src}) создает отчет о покрытии только для указанной директории.
+
+Пример вывода
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+$ cd /path/to/code/ch7/tasks_proj_v2
+$ pytest --cov=src
+
+===================== test session starts ======================
+
+plugins: mock-1.6.2, cov-2.5.1
+collected 62 items
+tests/func/test_add.py ...
+tests/func/test_add_variety.py ............................
+tests/func/test_add_variety2.py ............
+tests/func/test_api_exceptions.py .........
+tests/func/test_unique_id.py .
+tests/unit/test_cli.py .....
+tests/unit/test_task.py ....
+
+---------- coverage: platform darwin, python 3.6.2-final-0 -----------
+
+Name                           Stmts   Miss  Cover
+--------------------------------------------------
+src\tasks\__init__.py              2      0   100%
+src\tasks\api.py                  79     22    72%
+src\tasks\cli.py                  45     14    69%
+src\tasks\config.py               18     12    33%
+src\tasks\tasksdb_pymongo.py      74     74     0%
+src\tasks\tasksdb_tinydb.py       32      4    88%
+--------------------------------------------------
+TOTAL                            250    126    50%
+
+================== 62 passed in 0.47 seconds ===================
+\end{lstlisting}
+
+В этом примере некоторые файлы имеют довольно низкий процент покрытия. Лучший способ посмотреть чего не хватает для полного покрытия тестами это html-отчеты (см. \pic{fig:pytest_cov_html})
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pytest --cov=src --cov-report=html
+\end{lstlisting} 
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.85]{figures/pytest_cov_html.png}
+	\caption{ Страница html-отчета о покрытии кода тестами }\label{fig:pytest_cov_html}
+\end{figure}
+
+Из \pic{fig:pytest_cov_html} можно заключить, чт:
+\begin{itemize}
+	\item функция \texttt{list\_tasks} не тестируется для случая, когда задано имя владельца (эта строка отмечена красным),
+	
+	\item не тестируются функции \texttt{update} и \texttt{delete}.
+\end{itemize}
+
+Теперь можно эти функции включить в список TO-DO по тестированию вместе с тестированием системы конфигурации.
+
+Хотя большой процент покрытия -- это хорошая цель, а инструменты тестирования полезны для получения информации о состоянии тестового покрытия, сама по себе величина процента не особо информативна.
+
+Например, покрытие кода тестами на 100\% -- достойная цель, но это не обязательно означает, что код тестируется полностью. Эта величина лишь показывает, что все строки кода в программе выполнены, но не сообщает, что были протестированы все условия.
+
+Кроме того, когда есть, который не тестируется, это может означать. что необходим тест. Но это также может означать, что есть некотрые функции системы, которые не нужны и могут быть удалены.
+
+Стоит использовать информацию о покрытии с целью расширения набора тестов и создания их для кода, который не запускается. Это упрощает поддержку проекта и повышает общее качество кода.
+
+\subsection{Виртуальные окружения}
+
+Одно из главных применений виртуального окружения -- обеспечение чистого окружения для запуска модульных тестов.
+
+Для тестирования приложений в различных средах удобно использовать \texttt{tox}. \texttt{tox} -- утилита командной строки, которая позволяет запускать полный набор тестов в нескольких средах (например, с различными версиями Python, или различными конфигурациями для различных операционных систем).
+
+В общих чертах \texttt{tox} работает так
+\begin{enumerate}
+	\item Создает виртуальную среду в каталоге \texttt{.tox},
+	
+	\item Устанавливает некоторые зависимости,
+	
+	\item Устанавливает пакет из \texttt{sdist},
+	
+	\item Запускает тесты,
+	
+	\item Создает отчет с результатами.
+\end{enumerate}
+
+Для того чтобы включить в проект поддержку \texttt{tox}, нужно подготовить файл \texttt{tox.ini} на том же уровне, что и \texttt{setup.py}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+project/
+  |-- setup.py
+  |-- tox.ini
+  ...
+\end{lstlisting}
+
+Конфигурационный файл \texttt{tox.ini} может выглядеть так
+\begin{lstlisting}[
+title = {\sffamily tox.ini},
+style = bash,
+numbers = none	
+]
+[tox]
+envlist = py27,py36
+
+[testenv]
+deps=pytest  # если pytest нет в системе, то tox его установит
+commands=pytest # запустит pytest внутри тестового окружения
+
+[pytest]
+addopts = -rsxX -l --tb=short --strict
+markers = 
+    smoke: Run the smoke test functions
+    get: Run the test functions that test tasks.get()
+
+\end{lstlisting}
+
+Если запустить код сейчас, \texttt{tox} создаст окружение, установит новую зависимость и запустит команду \texttt{pytest}, котрая выполнит все модульные тесты. Для добавления новых зависимостей можно либо добавить их в опцию \texttt{deps} конфигурации, как в примере, либо воспользоваться \verb|-rfile| для чтения из файла.
+
+Здесь строка \texttt{envlist = py27,py36} позволяет запускать тесты с использованием Python 2.7 и Python 3.6.
+
+Строка \texttt{deps=pytest} заставляет \texttt{tox} проверить установлен ли \texttt{pytest}. Строка \texttt{commands=pytest} говорит \texttt{tox}, что нужно запускать \texttt{pytest} в каждой среде.
+
+Строка \texttt{addopts = -rsxX} включает дополнительную сводную информацию для пропусков, а \texttt{-l} включает отображение локальных переменных в трассировке стека. Он также по умолчанию использует сокращенные трассировки стека (\verb|--tb=short|) и гарантирует, что все маркеры, используемые в тестах, будут объявлены первыми (\verb|--strict|). 
+
+Можно запустить тесты и для другой версии Python, если передать метку \verb|-e| в \texttt{tox}, например
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+tox -e py26
+\end{lstlisting}
+
+По умолчанию \texttt{tox} имитирует любое окружение, которое совпадает со следующими версиями Python: \texttt{py24}, \texttt{py25}, \texttt{py26}, \texttt{py27}, \texttt{py30}, \texttt{py31}, \texttt{py32}, \texttt{py33}, \texttt{py34}, \texttt{py35}, \texttt{py36}, \texttt{py37}, \texttt{jython} и \texttt{pypy}.
+
+Можно определить свои собственные окружения. Для этого достаточно добавить секцию с именем \texttt{[testenv:envname]}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+[testenv]
+deps=pytest
+commands=pytest
+
+[testenv:py36-coverage]
+deps=
+    {[testenv]deps} # значение переменной deps из раздела [testenv]
+    pytest-cov
+commands=pytest --cov=myproject
+\end{lstlisting}
+
+Используя \verb|pytest --cov=myproject| на секции \texttt{py36-coverage}, как показано в примере, мы переопределили команды для окружения \texttt{py36-coverage}. Когда мы запустим \texttt{tox -e py36-coverage}, то установим \texttt{pytest} как одну из зависимостей, а сама команда \texttt{pytest} запуститься с опцией \texttt{coverage}.
+
+Здесь мы заменили значение \texttt{deps} на аналогичное значение из \texttt{testenv} и добавили зависимость с \texttt{pytest-cov}.
+
+В \texttt{tox} поддерживается интерполяция переменных, поэтому можно обращаться к любому полю из файла \texttt{tox.ini} и использовать его как переменную с помощью синтаксиса
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+{[env_name]variable_name}
+\end{lstlisting}
+
+
+
+
+
+
+
 
 
 \section{Инструменты автоматического форматирования, инспектирования и анализа кода}
@@ -3660,7 +4249,7 @@ def clock(fmt=DEFAULT_FMT):  # фабрика декораторов
         count = 0
         def clocked(*_args):  # замыкание
             nonlocal count  # делает переменную свободной
-            count += 1
+            count += 1 # без nonlocal здесь была создана новая локальная переменная count
             print(f'args-{count}: {_args}')
             t0 = time.time()
             _result = func(*_args)
@@ -3683,6 +4272,8 @@ if __name__ == '__main__':
     for i in range(3):
         snooze(0.123)
 \end{lstlisting}
+
+В этом примере необходима строка \texttt{nonlocal count}, так как во вложенной функции \texttt{clocked} создается новая локальная переменная \texttt{count}, которая <<затирает>> переменную \texttt{count} из области видимости объемлющей функции \texttt{decorate}. Ключевое слова \texttt{nonlocal} говорит интерпретатору, что при поиске значения переменной \texttt{count} не следует ограничиваться локальной областью видимости функции \texttt{clocked}.
 
 Теперь фабрику декораторов можно вызывать, например, так:
 \begin{lstlisting}[
@@ -3709,7 +4300,7 @@ def snooze(seconds):
 Если переменная локальная, то интерпретатор в поисках значения этой переменной не может покинуть соответствующую локальную области видимости 
 }
 
-Еще раз. \emph{Свободные переменные} по умолчанию можно \underline{только читать} из-под замыкания. Когда мы присваиваем новое значение переменной \texttt{count} в теле замыкания, то мы делаем эту переменную \emph{локальной} для замыкания \texttt{clocked}, т.е. переменная \texttt{count} перестает быть свободной.
+Еще раз. \emph{Свободные переменные} по умолчанию можно \underline{только читать} из-под замыкания. Когда мы присваиваем новое значение переменной \texttt{count} в теле замыкания, мы делаем эту переменную \emph{локальной} для замыкания \texttt{clocked}.
 
 Чтобы объяснить интерпретатору, что переменная \texttt{count} должна рассматриваться как \emph{свободная} даже если ей присваивается значение в области видимости замыкания (что делает переменную локальной), следует использовать оператор \texttt{nonlocal}.
 
@@ -3766,6 +4357,100 @@ f()()  # 11
 \end{lstlisting}
 \end{minipage}
 
+\subsection{Цепочка параметрических декораторов}
+
+Рассмотрим пример параметрических декораторов
+\begin{lstlisting}[
+title = {\sffamily deco.py},
+style = ironpython,
+numbers = none	
+]
+def check_user_is_not(username): # фабрика декораторов -> декоратор
+    def user_check_decorator(f):
+        def wrapper(*args, **kwargs):
+            if kwargs.get("username") == username:
+                raise Exception(f"User {username} is not allowed to get food")
+            return f(*args, **kwargs)
+        return wrapper
+    return user_check_decorator
+
+
+class Store:
+    def __init__(self):
+        self.storage = {
+	        "meat" : 10,
+	        "eggs" : 20,
+        }
+
+
+     @check_user_is_not("admin") # wrapper#1 = user_check_decorator(f=wrapper#1) -> wrapper#2
+     @check_user_is_not("alex") # get_food = user_check_decorator(f=get_food) -> wrapper#1
+     def get_food(self, *, username=None, food=None): # get_food = wrapper#2
+         return self.storage.get(food)
+
+
+store = Store()
+print(store.get_food(username="leor", food="meat"))
+# Вывод
+# admin
+# alex
+# 10  # из-под wrapper уровня "admin"
+\end{lstlisting}
+
+Сразу после загрузки модуля \texttt{deco.py} запускается цепочка параметрических декораторов, начиная с того декоратора, который расположен ближе к декорируемой функции. 
+
+О параметрическом декораторе (т.е. параметрической фабрике декораторов -- функции, которая возвращает декоратор) можно думать так, как, если бы никакой фабрики там не было, а был только обычный декоратор, который возвращается фабрикой, и передает переменной \texttt{username} какое-то значение, т.е.
+\begin{lstlisting}[
+title = {\sffamily deco.py},
+style = ironpython,
+numbers = none	
+]
+...
+@check_user_is_not("admin") # @user_check_decorator
+@check_user_is_not("alex")  # @user_check_decorator
+def get_food(self, *, username=None, food=None): # get_food = wrapper#2
+    ...
+\end{lstlisting}
+
+Другими словами, параметрический декоратор \texttt{check\_user\_is\_not()} возвращает ссылку на вложенную функцию (настоящий декоратор) \texttt{user\_check\_decorator} и на этом останавливается. Затем включается <<настоящий>> декоратор \texttt{user\_check\_decorator}, который, как обычно получает ссылку на декорируемую функцию и возвращает ссылку на вложенную функцию \texttt{wrapper} и на этом останавливается
+\begin{lstlisting}[
+numbers = none	
+]
+get_food = user_check_decorator(f=get_food) -> wrapper#1
+\end{lstlisting}
+
+Теперь эта вложенная функция \texttt{wrapper} становится декорируемой. И ее декориует параметрический декоратор \texttt{check\_user\_is\_not("admin")}, который снова возвращает ссылку на \\ \texttt{user\_check\_decorator}, но уже с другим значением переменной \texttt{username}. А декоратор \\ \texttt{user\_check\_decorator} возвращает ссылку на вложенную функцию \texttt{wrapper}
+\begin{lstlisting}[
+numbers = none	
+]
+wrapper#1 = user_check_decorator(f=wrapper#1) -> wrapper#2
+\end{lstlisting}
+
+В итоге декорируемая функция \texttt{get\_food} заменяется на функцию \texttt{wrapper} с \texttt{username="admin"}. И потому при вызове метода \texttt{get\_food} вызывается функция \verb|wrapper#2| со значением переменной \texttt{username="admin"} и собственными параметрами \verb|username="leor", food="meat"|. В результате чего условие
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+if kwargs.get("username") == username: # "leor" == "admin"
+\end{lstlisting}
+не выполняется и функция \verb|wrapper#2| (со значением \texttt{"admin"}) вызывает функцию \verb|f(*args, **kwargs)| (т.е. функцию \verb|wrapper#1(username="leor", food="meat")|, для которой также не выполняется условие
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+if kwargs.get("username") == username: # "leor" == "alex"
+\end{lstlisting}
+и вызывается функция \texttt{f(*args, **kwargs)} (т.е. функция \verb|get_food(username="leor", food="meat")|), которая уже, наконец, возвращает по ключу \texttt{"meat"} значение 10 из словаря \texttt{self.storage}. И это значение возвращается из-под \verb|wrapper#2|.
+
+Поэтому сначала в терминал выводится стока \texttt{admin}, а уже затем \texttt{alex}.
+
+ВАЖНО: {\color{remarkcolor} Сначала выполняется тот параметрический декоратор в цепочке, который ближе всех располагается к декорируемой функции. Затем та функция, которая возвращается этим <<ближайшим>> декоратором декорируется декоратором, который расположен выше в цепочке декораторов и т.д.
+	
+Самое главное заключается в том, что функция, которая возвращается последним декоратором (т.е. первым в цепочке/списке декораторов) связывается с декорируемой функцией, как в пример выше \verb|get_food -> wrapper#2|.}
+
+
+
+
 
 \subsection{Обобщение по механизму работы декораторов}
 
@@ -3792,6 +4477,131 @@ def target():
 	\includegraphics[scale=0.85]{figures/target_deco_formula.png}
 	\caption{ К вопросу о механизме работы декоратора с вложенной функцией }\label{fig:target_deco_formula}
 \end{figure}
+
+
+
+\subsection{Написание декораторов класса}
+
+Есть возможность реализовать декораторы класса, правда, они используются гораздо реже. Декораторы класса работают так же, как и декораторы функций, но с классами. Следующий фрагмент кода -- это пример декоратора класса, который устанавливает атрибуты для двух классов
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import uuid
+
+def set_class_name_add_id(klass):
+    klass.name = str(klass)        # станет атрибутом класса
+    klass.random_id = uuid.uuid4() # станет атрибутом класса
+    return klass
+    
+@set_class_name_and_id
+class SomeClass:
+    pass
+\end{lstlisting}
+
+Когда класс будет объявлен и загружен, он установит атрибуты класса \texttt{name} и \texttt{random\_id}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+>>> SomeClass.name # <class '__main__.SomeClass'>
+>>> SomeClass.random_id # UUID('9b75e122-f52a-468b-9796-311d394de2bf')
+\end{lstlisting}
+
+Еще можно таким способом регистрировать объявленные классы
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import numpy as np
+
+
+registry = {}
+
+
+def register_class(cl):
+    name = str(cl.__name__)
+    random_id = np.random.randn()
+    registry[name] = random_id
+    return cl # возвращает ссылку на класс
+
+
+@register_class
+class TestClass:
+    pass
+
+
+@register_class
+class SimpleClass:
+    pass
+
+
+for key, value in registry.items():
+    print(key, value)
+\end{lstlisting}
+
+Иногда бывает удобно применять декораторы класса для декорирования функций или других классов
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+class CountClass:
+    def __init__(self, f):
+        self.f = f
+        self.called = 0
+        
+    
+    def __call__(self, *args, **kwargs):
+        self.called += 1
+        return self.f(*args, **kwargs)
+        
+        
+@CountClass
+def print_hello():
+    print("hello")   
+    
+
+print(print_hello.called) # 0
+print_hello()
+print(print_hello.called) # 1
+print_hello()
+print(print_hello.called) # 2
+\end{lstlisting}
+
+Здесь при загрузке модуля аргумент \texttt{f} метода \verb|__init__()| получает ссылку на декорируемую функцию, а переменная \texttt{self.called} инициализируется нулем.
+
+Теперь при каждом вызове функции \texttt{print\_hello()} будет вызываться метод \verb|__call__()|. При этом значение переменной \texttt{self.called} будет увеличиваться на единицу, а затем будет вызываться собственно задекорированная функция.
+
+\section{Методы в Python}
+
+\subsection{Статические методы}
+
+\emph{Статические методы} принадлежат классу, а не его экземпляру, поэтому они фактически не работают и не влияют на экземпляры класса. Вместо этого статический метод оперирует параметрами, которые принимает. Статические методы обычно используются для создания функций полезности, потому что не зависят от состояния классов или объектов.
+
+Использование статических методов предоставляет несколько преимуществ:
+\begin{itemize}
+	\item Скорость. Python не должен устанавливать связанный метод для каждого связанного объекта. Связанный метод -- это тоже объект, а создание нового объекта отнимает системные ресурсы, хоть и незначительные,
+	
+	\item Удобочитаемость кода. Видя декоратор \verb|@staticmethod|, мы знаем, что метод не зависит от состояния объекта.
+\end{itemize}
+
+К сожалению, Python не всегда способен определить, является ил метод статическим, -- это издержки дизайна языка.
+
+\subsection{Классовые методы}
+
+Классовые методы связаны с классом, а не с экземпляром. Классовые методы очень полезны при динамическом создании экземпляров класса
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+class Pizza:
+    def __init__(self, ingredients):
+        self.ingredients = ingredients
+        
+    @classmethod
+    def from_fridge(cls, fridge):
+        return cls(fridge.get_cheese() + fridge._get_vegetables())
+\end{lstlisting}
 
 
 \section{Замыкания/фабричные функции в \texttt{Python}}
