@@ -614,7 +614,7 @@ numbers = none
 pip show my_package
 \end{lstlisting}
 
-Например, на macOs пакеты в виртуальных окружениях устанавливаются в \directory{\~ > opt > anaconda3 > envs > env\_name > lib > python3.7 > site-packages }.
+Например, на macOs пакеты в виртуальных окружениях устанавливаются в \directory{ HOME > opt > anaconda3 > envs > env\_name > lib > python3.7 > site-packages }.
 
 После того как пакет, например, \texttt{my\_package}, будет установлен с помощью \texttt{pip install my\_package}, в директории \texttt{... > site-packages} будет создано две поддиректории
 \begin{itemize}
@@ -803,18 +803,18 @@ class UploadCommand(Command):
 
     def run(self):
         try:
-            self.status('Removing previous builds…')
+            self.status('Removing previous builds...')
             rmtree(os.path.join(here, 'dist'))
         except OSError:
             pass
 
-        self.status('Building Source and Wheel (universal) distribution…')
+        self.status('Building Source and Wheel (universal) distribution...')
         os.system('{0} setup.py sdist bdist_wheel --universal'.format(sys.executable))
 
-        self.status('Uploading the package to PyPI via Twine…')
+        self.status('Uploading the package to PyPI via Twine...')
         os.system('twine upload dist/*')
 
-        self.status('Pushing git tags…')
+        self.status('Pushing git tags...')
         os.system('git tag v{0}'.format(about['__version__']))
         os.system('git push --tags')
 
@@ -1909,7 +1909,8 @@ def test_ioerror():
 
 Этот листинг реализует тестовый случай, который ищет все экземпляры строки <<\emph{Python is a programming language}>> на сайте \texttt{http://python.org}. Не существует варианта, при котором тест не найдет ни одной заданной строки на выбранной веб-странице. Чтобы получить отрицательный результат, необходимо изменить страницу, а этого сделать нельзя. Но с помощью \texttt{mock} можно пойти на хитрость и изменить поведение запроса так, чтобы он возвращал ответ-пустышку с выдуманной страницей, не содержащей заданной строки. Это позволит протестировать отрицательный сценарий, в котором \texttt{http://python.org} не содержит заданной строки, и убедиться, что программа обрабатывает такой случай корректно.
 
-Чуть подробнее об этом примере. Когда мы в командной строке запускаем \texttt{pytest -v mock\_sample.py}, происходит следующее: \item вызывается функция \texttt{test\_python\_is()}, <<разворачивается>> код функции \\ \texttt{is\_python\_still\_a\_programming\_language()} как строка и \texttt{mock.patch} в этой функции замещает подстроку \texttt{requests.get} ссылкой на функцию \texttt{fake\_get}, вызов которой вернет объект-заглушку с атрибутами \texttt{status\_code} и \texttt{content}; поскольку в данном случае \texttt{status\_code} имеет значение 200, а \texttt{content} -- <<\emph{Python is a programming language for sure}>>, условие выполняется и функция \texttt{is\_python\_still\_a\_programming\_language()} возвращает \texttt{True} (т.е. тест пройден).
+Чуть подробнее об этом примере. Когда мы в командной строке запускаем \texttt{pytest -v mock\_sample.py}, происходит следующее: вызывается функция \texttt{test\_python\_is()}, <<разворачивается>> код функции \\ \texttt{is\_python\_still\_a\_programming\_language()} как строка и \texttt{mock.patch} в этой функции замещает подстроку \texttt{requests.get} ссылкой на функцию \texttt{fake\_get}, вызов которой вернет объект-заглушку с атрибутами \texttt{status\_code} и \texttt{content}; поскольку в данном случае \texttt{status\_code} имеет значение 200, а \texttt{content} -- <<\emph{Python is a programming language for sure}>>, условие выполняется и функция \texttt{is\_python\_still\_a\_programming\_language()} возвращает \texttt{True} (т.е. тест пройден).
+
 
 Далее вызывается функция \texttt{test\_python\_is\_not()}. Снова код функции\\ \texttt{is\_python\_still\_a\_programming\_language()} разворачивается как строка, в которой \texttt{mock.patch} замещает \texttt{requests.get} ссылкой на \texttt{get\_fake}, которая возвращает объект-заглушку с атрибутами \texttt{status\_code=200} и \texttt{content} <<\emph{Python is no more a programming language}>>.\\ Функция \texttt{is\_python\_still\_a\_programming\_language()} возвращает \texttt{False}. Условие выполняется, тест пройден.
 
