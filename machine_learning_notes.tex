@@ -1487,6 +1487,111 @@ main("hello")
 
 В этом случае только одно расширение загружается и выбирается по имени. Это позволяет быстро создать систему драйверов, в которой программа загружает и использует только одно расширение.
 
+\section{Обработка исключений при чтении данных в Pandas}
+
+При загрузке данных в Pandas необходимо обрабатывать исключения, связанные с тем, что файл может не существовать или быть занят другим приложением и пр.
+
+Обрабатывать такие исключения удобнее всего с помощью \emph{менеджера контекста}
+\begin{lstlisting}[
+style = ironpython,
+emph = {read_data},
+numbers = none	
+]
+def read_data(data_filepath: str) -> pd.DataFrame:
+    with open(data_filepath, "r") as f:
+        print(f) # <_io.TextIOWrapper name='../filename.csv' mode='r' encoding='cp1251'>
+        data = pd.read_csv(f, delimiter=";")
+    return data
+\end{lstlisting}
+
+То есть в данном случае функции \texttt{read\_csv} передается не путь до файла или имя файла в формате строки, а \emph{файловый объект}.
+
+Известно, что программа завершится от любого необработанного исключения, а не только от SystemExit. Таким образом, если в вашем коде используются какие-то ресурсы, которые требуется правильным образом закрывать перед завершением работы, нужно оборачивать работу с ними в блоки \texttt{try...finally...}.
+
+Однако, при использовании конструкции \texttt{with} это \emph{оборачивание происходит автоматически}, и все ресурсы закрываются корректно.
+
+Так как выход из программы -- это всего лишь брошенное исключение, то и в случае использования функции \texttt{sys.exit} закрытие открытых в операторе \texttt{with} ресурсов произойдёт корректно
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import contextlib
+
+class Closeable:
+    def close(self):
+        print("closed")
+
+with contextlib.closing(Closeable()): # для классов, которые не приспособлены для работы с with
+    sys.exit() # напечатает closed
+\end{lstlisting}
+
+\section{Выход из приложения при перехвате исключения ветками try-except}
+
+Быстрый способ выйти из приложения при ошибке сводится к использованию \texttt{sys.exit()}. По умолчанию статус выхода 0. При \texttt{sys.exit(0)} не будет выводится дополнительная информация об ошибке. При статусе завершения \texttt{>0} вывод будет обогащен дополнительными сведениями.
+
+Вызов \texttt{sys.exit()} возбуждает исключение \texttt{SystemExit}. Если, к примеру, требуется завершить работу приложения, если файл с данными не найден, то можно в конце блока \texttt{except} добавить строку \texttt{sys.exit()}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+def preprocessing_paths():
+    ...
+    try:
+        if not data_filepath.exists():
+            raise DataFilepathNotExists("Ошибка! Файл с данными не существует")
+    except DataFilepathNotExists as err:
+        print(f"{err}")
+        sys.exit() # завершит работу приложения и выбросит из сессии
+    else:
+        ...
+        return data_filepath, output_fig_filepath
+\end{lstlisting}
+
+\section{Логгирование в Python}
+
+Для того чтобы записи журнала уровня INFO не игнорировались логгером, следует установить базовый уровень логгирования в INFO или DEBUG (уровень логгирования по умолчанию WARNING)
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+file_log = logging.FileHandler("logs.log") # файловый хендлер
+console_out = logging.StreamHandler(sys.stdout) # потоковый хендлер
+
+logging.basicConfig(
+    handlers=(file_log, console_out),
+    format=("[%(asctime)s | %(levelname)s]: %(message)s"),
+    datefmt='%Y-%m-%d %H:%M:%S',
+    level=logging.INFO, # базовый уровень логгирования
+)
+...
+logging.info(...)
+logging.error(...)
+\end{lstlisting}
+
+
+\section{Приемы работы с библиотекой argparse}
+
+Для того чтобы логику работы python-сценария можно было менять <<на лету>>, используются различные инструменты разработки приложений с интерфейсом командной строки. Например, можно использовать библиотеку \texttt{argparse} 
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+parser = argparse.ArgumentParser()
+parser.add_argument("--config-path", type = str)
+args = parser.parse_args()
+
+CONFIG_FILENAME = args.config_path # вернет значение, переданное флагу --config-path
+\end{lstlisting}
+
+В командной оболочке вызов должен выглядеть так
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+python file_name.py --config-path config.yaml
+\end{lstlisting}
+
+
 \section{Тестирование в Python}
 
 Хранить тесты нужно в поддиректории \texttt{tests} пакета, приложения или библиотеки, к которым они относятся. Использование иерархии в дереве теста, которая повторяет иерархию модуля, сделает тесты более управляемыми. Это значит, что тест для кода \texttt{mylib/foobar.py} необходимо размещать в \texttt{mylib/tests/test\_foobar.py}. 
@@ -1545,6 +1650,80 @@ pytest -v test_true.py
 \subsection{Пример организации директории под тесты}
 
 Если в директории, которая позиционируется как пакет, есть модуль \texttt{\_\_init\_\_.py}, то при импорте пакета (\texttt{import package}, \texttt{from my\_cool\_lib import package}) будет выполнено все, что написано в модуле  \texttt{\_\_init\_\_.py}. И если модуль \texttt{\_\_init\_\_.py}, например, импортирует какие-то функции из другого модуля, то эти функции станут частью пространства имен пакета, ассоциированного с модулем \texttt{\_\_init\_\_.py}.
+
+Пример директории проекта
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+myproject/
+  -- main_part/
+    -- __init__.py # from .simple_module import my_summa\n\n__all__ = ["my_summa"]
+    -- simple_module.py # функция my_summa
+  -- tests/
+    -- __init__.py # пустой файл
+    -- test_summa.py # from main_part import my_summa
+\end{lstlisting}
+
+\begin{lstlisting}[
+title = {\sffamily main\_part/\_\_init\_\_.py},
+style = ironpython,
+numbers = none	
+]
+from .simple_module import my_summa # <- NB: относительный импорт модуля!!!
+
+__all__ = ["my_summa"] # my_summa станет частью пространства имен пакета main_part
+\end{lstlisting}
+
+\begin{lstlisting}[
+title = {\sffamily simple\_module.py},
+style = ironpython,
+numbers = none	
+]
+def my_summa(a, b):
+    return a + b
+\end{lstlisting}
+
+\begin{lstlisting}[
+title = {\sffamily test\_summa.py},
+style = ironpython,
+numbers = none	
+]
+from main_part import my_summa
+
+def test_summa():
+    a = 10
+    b = 20
+    res = my_summa(a, b)
+    assert res == 30
+\end{lstlisting}
+
+В директории (пакете) \directory{main\_part} лежит модуль \verb|__init__.py|, который с помощью относительного импорта (но можно было использовать и технику абсолютного импорта) извлекает из модуля \texttt{simple\_module} функцию \texttt{my\_summa}. Поэтому при импорте пакета \directory{main\_part} функия \texttt{my\_summa} станет частью пространства имен пакета.
+
+СВОДКА: таким образом, из-под директории \texttt{tests} используя технику абсолютного импорта (от корня проекта) можно импортировать \emph{нужные рабочие} модули проекта. В директории \verb|__init__.py| и пакетах обязательно должны находиться модули \verb|__init__.py| (не смотря на то, что в последних версиях Python это и не обязательно). При импорте подмодулей текущего пакета инструкции импорта в модуле \verb|__init__.py| могут использовать либо технику абсолютного, либо относительного импорта.
+
+\textbf{ПРАВИЛА} импортов пакетов и модулей обычного проекта:
+\begin{itemize}
+	\item При импорте пакетов или модулей проекта используется \emph{техника абсолютного импорта}, т.е. прописывается путь до интересующего пакета или модуля относительно корня проекта.
+	
+	\item Если в директории/пакете присутствует файл \verb|__init__.py|, внутри которого выполняется импорт функций, классов и пр. локальных модулей, то эти фукнции и классы становятся частью пространства имен текущего пакета.
+\end{itemize}
+
+\textbf{ПРАВИЛА} импортов пакетов и модулей из-под директории \texttt{tests}:
+\begin{itemize}
+	\item в модулях, предназначенных для тестирования, используется \emph{техника абсолютного импорта}, т.е. прописывается путь до интересующего пакета или модуля относительно корня проекта, например, если в проекте есть пакет \texttt{ml\_example}, в котором, в свою очередь, есть пакет \texttt{entities} (в этом пакете доступен класс TrainingPipelineParams), то импорт из-под тестового модуля директории \texttt{tests} может выглядеть так
+\begin{lstlisting}[
+style = bash,
+title = {\sffamily tests/test\_end2end\_training.py},
+numbers = none	
+]
+# относительно корня проекта
+from ml_example.entities import TrainingPipelineParams
+# модуль train_pipeline лежит в корне проекта
+from train_pipeline import train_pipeline # из модуля train_pipeline импортируется соотвествующая функция
+\end{lstlisting}
+\end{itemize}
+
 
 \subsection{Пропуск тестов}
 
