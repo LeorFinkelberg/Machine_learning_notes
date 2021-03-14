@@ -1592,6 +1592,113 @@ python file_name.py --config-path config.yaml
 \end{lstlisting}
 
 
+\section{Конфигурационные файлы как интерфейс доступа к Python-сценарию}
+
+Конфигурационный файл может использоваться как интерфейс доступа к Python-приложению. Пример файла конфигурации
+\begin{lstlisting}[
+	style = bash,
+	title = {\sffamily config.yaml},
+	numbers = none	
+	]
+	input_data_path: "ml_example/data/raw/train.csv" # относительно корня проекта
+	output_model_path: "models/model.pkl"
+	metric_path: "models/metrics.json"
+	splitting_params:
+	val_size: 0.1
+	random_state: 3
+	train_params:
+	model_type: "RandomForestRegressor"
+	feature_params: # этому элементу соответствует класс FeatureParams
+	  categorical_features:
+  	    - "MSZoning"
+	    - "Neighborhood"
+	    - "RoofStyle"
+	    ...
+\end{lstlisting}
+
+Чтобы использовать значения из конфигурационного файла в приложении, следует прочитать этот файл с помощью библиотеки \texttt{yaml}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import yaml
+	
+with open("config.yaml", "r") as f:
+	config = yaml.safe_load(f) # config -- это обычный словарь
+\end{lstlisting}
+
+Однако в данном случае не проверяются типы переданных значений. Для организации проверки типов можно использовать модуль \texttt{dataclasses}
+\begin{lstlisting}[
+style = ironpython,
+title = {\sffamily train\_pipeline\_params.py},
+emph = {read_training_pipeline_params},
+numbers = none	
+]
+from dataclasses import dataclass
+from .split_params import SplittingParams
+from .feature_params import FeatureParams
+from .train_params import TrainingParams
+from marshmallow_dataclass import class_schema
+import yaml
+
+@dataclass()
+class TrainingPipelineParams:
+    """
+    Главный класс для построения схемы конфигурационного файла
+    """
+    input_data_path: str
+    output_model_path: str
+    metric_path: str
+    splitting_params: SplittingParams
+    feature_params: FeatureParams
+    train_params: TrainingParams
+
+TrainingPipelineParamsSchema = class_schema(TrainingPipelineParams)
+
+def read_training_pipeline_params(path: str) -> TrainingPipelineParams:
+    with open(path, "r") as input_stream:
+        schema = TrainingPipelineParamsSchema()
+    return schema.load(yaml.safe_load(input_stream)) # возвращает объект, к полям которого можно обращаться с помощью точечной нотации
+\end{lstlisting}
+
+Пример класса для построения схемы подэлемента конфигурационного файла
+\begin{lstlisting}[
+title = {\sffamily feature\_params.py},
+style = ironpython,
+numbers = none
+]
+from dataclasses import dataclass, field
+from typing import List, Optional
+
+@dataclass()
+class FeatureParams:
+    """
+    Класс для построения схемы подэлемента конфигурационного файла.
+    Соответствует элементу feature_params файла config.yaml
+    """
+    categorical_features: List[str]
+    numerical_features: List[str]
+    features_to_drop: List[str]
+    target_col: Optional[str]
+    use_log_trick: bool = field(default=True) # <- 
+\end{lstlisting}
+
+Например, если
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+params = read_training_pipeline_params("config.yaml")
+\end{lstlisting}
+то вызвать значение, скажем, \texttt{use\_log\_trick} можно так
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+params.feature_params.use_log_trick # вернет True (так как это значение по умолчанию в классе FeatureParams)
+\end{lstlisting}
+
+
 \section{Тестирование в Python}
 
 Хранить тесты нужно в поддиректории \texttt{tests} пакета, приложения или библиотеки, к которым они относятся. Использование иерархии в дереве теста, которая повторяет иерархию модуля, сделает тесты более управляемыми. Это значит, что тест для кода \texttt{mylib/foobar.py} необходимо размещать в \texttt{mylib/tests/test\_foobar.py}. 
@@ -1646,6 +1753,8 @@ pytest -v test_true.py
 	
 	\item Тесты собственно данных: имена колонок, границы, дубли и пр.
 \end{itemize}
+
+
 
 \subsection{Пример организации директории под тесты}
 
