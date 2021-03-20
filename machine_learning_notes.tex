@@ -1931,9 +1931,27 @@ curl -X POST http://127.0.0.1:5000/invocations \
 \end{lstlisting}
 
 
-\section{WSGI-серверы}
+\section{WSGI- и ASGI-серверы}
 
-WSGI (Web Server Gateway Interface) -- стандарт взаимодействия между Python-приложением и веб-сервером. WSGI-серверы появились потому, что веб-серверы раньше не умели взаимодействовать с приложениями, написанными на Python.
+WSGI (Web Server Gateway Interface) -- протокол взаимодействия между \emph{Python-приложением} и \emph{веб-сервером}. WSGI-серверы появились потому, что веб-серверы раньше не умели взаимодействовать с приложениями, написанными на Python.
+
+ASGI (Asynchronous Server Gateway Interface) -- клиент-серверный протокол взаимодействия \emph{веб-сервера} и \emph{приложения} (это развитие технологии WSGI). По сравнению с WSGI предоставляет стандарт как для \emph{асинхронных}, так и для \emph{синхронных} приложений, с реализацией обратной совместимости WSGI.
+
+
+\section{NGINX}
+
+\texttt{nginx} \url{https://nginx.org/ru/} -- это \emph{HTTP-сервер} и обратный прокси-сервер, почтовый прокси-сервер, а также TCP/UDP прокси-сервер общего назначения.
+
+ЗАМЕЧАНИЕ: web-сервер -- это абстракция, которая вообщем-то ничего конкретного не означает. Или чуть подробнее, web-сервер -- это программный комплекс, необходимый для поддержания работы web-протоколов и непосредственно железо, на котором эти программы работают (физические сервера). http-сервер -- сервер, работающий по протоколу/ам HTTP/HTTPS. Или чуть более развернуть, http-сервер -- это всего лишь одна программа, реализующая взаимодействие по протоколу HTTP. Однако, когда говорят web-сервер, то обычно имеют ввиду именно http-сервер.
+
+Когда говорят о связке <<NGINX-gunicorn-Python\_webapp>>, то в ней \texttt{nginx} принимает запросы от клиентов (web-браузеров) и перенаправляет их WSGI-серверу (\texttt{gunicorn}), который в свою очередь перенаправляет их в Python-приложение. Когда Python-приложение возвращает какой-то ответ, этот ответ направляется на WSGI-сервер, который затем перенаправляет ответ на http-сервер \texttt{nginx} \pic{fig:nginx_gunicron_pythonapp}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.35]{figures/nginx_gunicorn_pythonapp.png}
+	\caption{ Связка NGINX - gunicorn - Python-webapp}\label{fig:nginx_gunicron_pythonapp}
+\end{figure}
+
 
 
 \section{Приемы разработки web-приложений с помощью FastAPI}
@@ -1949,7 +1967,7 @@ pip install wheel -U
 pip install uvicorn fastapi pydantic
 \end{lstlisting}
 
-\texttt{uvicorn} \url{https://www.uvicorn.org/} -- это ASGI веб-сервер. ASGI (Asynchronous Server Gateway Interface) -- клиент-серверный протокол взаимодействия веб-сервера и приложения (это развитие технологии WSGI). По сравнению с WSGI предоставляет стандарт как для асинхронных, так и для синхронных приложений, с реализацией обратной совместимости WSGI.
+\texttt{uvicorn} \url{https://www.uvicorn.org/} -- это ASGI веб-сервер\footnote{Не путать с \texttt{gunicorn} (\texttt{gunicorn} -- это WSGI-сервер, созданный для использования в UNIX-системах)}. 
 
 
 
