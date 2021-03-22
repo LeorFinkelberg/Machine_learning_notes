@@ -2080,6 +2080,178 @@ params.feature_params.use_log_trick # вернет True (так как это з
 \end{lstlisting}
 
 
+\section{Упаковка ML-пайплайна в docker-образ}
+
+В целом порядок работы выглядит следующим образом:
+
+\begin{itemize}
+	\item пишем ML-пайплайн, который, скажем, обучает модель случайного леса для задачи регрессии,
+	
+	\item тестируем этот ML-пайплайн, смотрим на метрики и пр.,
+	
+	\item когда нам кажется, что пайплайн работает как полагается,
+	\begin{itemize}
+		\item либо сохраняем обученную модель (модель обучается не в контейнере!) в формате \texttt{.pkl} в облачном хранилище (например, в S3),
+		
+		\item либо (если по каким-то соображением требуется, чтобы модель обучалась в контейнере) собираем проект с ML-пайплайном в пакет с помощью \texttt{python setup.py sdist bdist\_wheel} и публикуем его на PyPI с помощью \texttt{twine upload dist/*} (в директории \texttt{dist} будет лежать и tar-архив, и whl-архив); затем этот пакет можно будет установить с помощью утилиты \texttt{pip} внутри docker-образа; к слову, также можно собрать этот пайплайн и без публикации на PyPI: т.е. можно собрать ML-пайплайн в пакет с помощью \texttt{python setup.py sdist}, а затем установить пакет инструкцией \texttt{pip install dist/package\_name.tar.gz} внутри контейнера (но так лучше не делать!!!),
+
+	    \item с помощью инструкции \texttt{pip install package\_name} или в более простом, но менее правильном случае, с помощью инструкции \texttt{pip install dist/package\_name.tar.gz} устанавливаем наш пакет в окружение docker-образа,
+    
+	    \item получаем доступ к пакету: получить доступ к нашему пакету можно следующим образом
+	\end{itemize}
+    \begin{itemize}
+    	\item в файле \texttt{setup.py}, который используется при сборке пакета можно создать точку входа со специальным ключевым словом \texttt{console\_scripts}
+\begin{lstlisting}[
+title = {\sffamily setup.py},
+style = ironpython,
+]
+from setuptools import find_packages, setup
+
+setup(
+    name="ml_example",
+    packages=find_packages(),
+    version="0.1.0",
+    description="Example of ml project",
+    author="Your name (or your organization/company/team)",
+    entry_points={
+        "console_scripts": [ # <-- NB
+            "ml_example_train = ml_example.train_pipeline:train_pipeline_command"
+            # в Dockerfile должны быть строки
+            #     ENTRYPOINT ["ml_example_train]
+            #     CMD ["confis/train_config.yaml"]
+         ]
+    },
+    install_requires=[
+        "click",
+        "Sphinx",
+        ...
+        "marshmallow-dataclass==8.3.0",
+        "pandas",
+    ],
+    license="MIT",
+)
+\end{lstlisting}
+    Конструкцию на строке 11 (с оговорками) допустимо интерпретировать так: при запуске docker-контейнера (на базе образа Python), у которого в \texttt{Dockerfile} должна быть прописана инструкция \texttt{ENTRYPOINT} вида \texttt{ENTRYPOINT ["ml\_exmaple\_train"]} и инструкция \texttt{CMD ["configs/train\_config.yaml"]}, содержащая аргументы для \texttt{ENTRYPOINT}, объект \texttt{ml\_example\_train} будет преобразован в утилиту, которая строку
+    
+    \texttt{ml\_example.train\_pipeline:train\_pipeline\_command} превратит в
+    
+    \texttt{from ml\_example.train\_pipeline import train\_pipeline\_command} и запустит функцию \texttt{train\_pipeline\_command}, передав ей аргументы из \texttt{CMD}. В данном случае передача аргументов в функцию таким образом возможна, так как предполагается, что функция организована так
+\begin{lstlisting}[
+title = {\sffamily train\_pipeline.py},
+emph = {train_pipeline_command},
+style = ironpython,
+numbers = none	
+]
+...
+@click.command(name="train_pipeline")
+@click.argument("config_path") # <- принимает значение, переданное как аргумент командной строки или переданное через инструкцию CMD файла Dockerfile
+def train_pipeline_command(config_path: str):
+    params = read_training_pipeline_params(config_path)
+    train_pipeline(params)
+...
+\end{lstlisting}
+
+    А сам \texttt{Dockerfile} может выглядеть так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+FROM python:3.6 # <-- NB
+RUN mkdir -p /build
+...
+ENTRYPOINT ["ml_example_train"]
+CMD ["configs/train_config.yaml"]
+\end{lstlisting}
+    \end{itemize}
+
+    \item Подгружаем данные в docker-образ, например, из облачного хранилища,
+    
+    \item запускаем python-сценарий, который читает все, что нужно для его работы -- предобученную модель, данные, конфигурационные файлы и пр. -- ждем запроса от пользователя и возвращаем прогноз. 
+\end{itemize}
+
+ВАЖНО: на этапе проверки работы приложения стартовый сценарий, должен располагаться в корне проекта и использовать абсолютные пути (от корня проекта) до интересующих модулей и пакетов. При сборке пакета для публикации на PyPI РЕ нужно изменять пути (они как раньше должны включать все узлы цепочки импорта от корня проекта). Например, если директория, на основании которой мы собираемся сделать пакет для публикации на PyPI, называется \texttt{ml\_example} и лежит в корне проекта, то лежащие внутри нее модули, естественно, должны включать ее имя, например, \texttt{from ml\_example.data import read\_data}. После сборки проекта в пакет эти абсолютные пути по-прежнему будут иметь смысл, так как в этот поиск нужных модулей будет идти относительно имени опубликованного пакета.
+
+
+\section{Приемы работы с \texttt{dataclass}}
+
+Для того чтобы превратить обычный python-класс в дата-класс, который служит в числе прочего для валидации схемы конфигурационного файла\footnote{Или, проще говоря, для проверки типов значений, указанных в конфигурационном файле}, используемого в качестве интерфейса к python-приложению, нужно просто задекорировать соответствующий класс декоратором \texttt{dataclass}
+\begin{lstlisting}[
+title = {\sffamily ml\_example/entities/train\_pipelines\_params.py},
+style = ironpython,
+numbers = none	
+]
+import yaml
+from dataclasses import dataclass, field
+from marshmellow_dataclass import class_schema
+
+# это модули, в которых содержится описание классов, которые
+# будут использоваться как подтипы в главном дата-классе
+from .feature_params import FeatureParams
+from .split_params import SplittingParams
+...
+
+@dataclass()
+class TrainingPipelineParams:
+    # ожидается, что параметры с приведенными ниже именемами,
+    # встретятся в конфигурационном файле
+    input_data_path: str 
+    output_model_path: str
+    mertic_path: str
+    feature_params: FeatureParams    # класс из ml_example/entities/feature_params.py
+    spitting_params: SplittingParams # класс из ml_example/entities/split_params.py
+    ...
+    
+TrainingPipelineParamsSchema = class_schema(TrainingPipelineParams)
+
+def read_training_pipeline_params(
+    path: str
+) -> TrainingPipelineParams: # класс как тип
+    with open(path, "r") as input_schema: # input_schema -- файловый объект
+        schema = TrainingPipelineParamsSchema()
+        return schema.load(yaml.safe_load(input_schema))
+\end{lstlisting}
+
+Типичный класс, который используется как подтип в главном дата-классе, имеет следующий вид
+\begin{lstlisting}[
+title = {\sffamily ml\_example/entities/feature\_params.py},
+style = ironpython,
+numbers = none	
+]
+from dataclasses import dataclass, field
+from typing import List, Optional
+
+@dataclass()
+class FeatureParams:
+    categorical_features: List[str],
+    numerical_features: List[str],
+    features_to_drop: List[str],
+    target_col: Optional[str],
+    use_log_trick: bool = field(default = True) # этого параметры нет в конфигурационном файле, но ни что не мешает его объявить в дата-классе
+\end{lstlisting}
+
+Этот подкласс отвечает следующему фрагменту кофигурационного файла
+\begin{lstlisting}[
+title = {\sffamily train\_config.yaml},
+style = bash,
+numbers = none	
+]
+...
+feature_params:
+  categorical_features:
+    - "MSZoning"
+    - "Neighborhood"
+    ...
+  numerical_features:
+    - "OverallQual"
+    - "MSSubClass"
+    ...
+  features_to_drop:
+    - "YrSold"
+  target_col: "SalePrice"
+\end{lstlisting}
+
+
+
 \section{Тестирование в Python}
 
 Хранить тесты нужно в поддиректории \texttt{tests} пакета, приложения или библиотеки, к которым они относятся. Использование иерархии в дереве теста, которая повторяет иерархию модуля, сделает тесты более управляемыми. Это значит, что тест для кода \texttt{mylib/foobar.py} необходимо размещать в \texttt{mylib/tests/test\_foobar.py}. 
