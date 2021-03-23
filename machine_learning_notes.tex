@@ -1969,8 +1969,180 @@ pip install uvicorn fastapi pydantic
 
 \texttt{uvicorn} \url{https://www.uvicorn.org/} -- это ASGI веб-сервер\footnote{Не путать с \texttt{gunicorn} (\texttt{gunicorn} -- это WSGI-сервер, созданный для использования в UNIX-системах)}. 
 
+Последнюю часть URL, начинающуюся с первого символа \verb|/|, называют endpoint или маршрутом (route). Например, в URL \texttt{https://example.com/items/foo} путем (конечной точкой или маршрутом) будет \texttt{/items/foo}.
+
+Под операциями понимаются http-методы:
+\begin{itemize}
+	\item \texttt{POST}: создание данных,
+	
+	\item \texttt{GET}: чтение данных,
+	
+	\item \texttt{PUT}: обновление данных,
+	
+	\item \texttt{DELETE}: удаление данных,
+	
+	\item \texttt{OPTIONS},
+	
+	\item \texttt{HEAD},
+	
+	\item \texttt{PATCH},
+	
+	\item \texttt{TRACE}
+\end{itemize}
+
+Пример
+\begin{lstlisting}[
+style = ironpython,
+title = {\sffamily main.py},
+numbers = none
+]
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/") # HTTP-метод GET на пути /
+async def root():
+    return {"message" : "Hello World"}
+\end{lstlisting}
+
+Здесь \verb|@app.get("/")| говорит FastAPI, что задекорированная функция отвечает за обработку запросов, которые идут на <<корень>> web-сервиса, используя метод GET.
+
+Функция \texttt{root} будет вызываться всякий раз, когда web-сервис получает запрос на <<корень>>, то есть на \verb|"/"| с использованием метода GET.
+
+Аналогично можно использовать и другие операции: \verb|@app.post()|, \verb|@app.put()|, \verb|@app.delete()| и т.д.
+
+Запустить приложение из командной строки можно так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+uvicorn main:app --reload # reload для перезапуска сервера после внесения изменений в код
+\end{lstlisting}
+
+Можно подставлять аргументы в маршрут. Например
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI
+
+app = FastAPI()
+
+# http://127.0.0.1:8000/items/foo -> item_id = "foo"
+@app.get("/items/{item_id}")
+async def read_item(item_id): # item\_id = "foo"
+    return {"item_id" : item_id}
+\end{lstlisting}
+
+Теперь, если запустить этот пример как
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+http://127.0.0.1:8000/items/foo
+\end{lstlisting}
+то значение \verb|"foo"| из маршрута будет передано функции \texttt{read\_item} в виде аргумента \texttt{item\_id}.
+
+Можно явно указывать тип параметра в функции
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_item(item_id: int):
+     return {"item_id" : item_id}
+\end{lstlisting}
+
+FastAPI действительно проверяет тип параметров. И если тип параметра не соответствует указанному в функции, то возникает ошибка.
+
+Если нужно передать какой-то путь, то следует использовать такой синтаксис \texttt{/files/{file\_path:path}}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI
+
+app = FastAPI()
+
+# например, localhost:8000/files//leor.finkelberg/python -> file_path = "/leor.finkelberg/python"
+@app.get("/files/{file_path:path}")
+async def read_file(file_path: str):
+    return {"file_path" : file_path}
+\end{lstlisting}
+
+Еще можно использовать значения параметров, передаваемые в запросе, но не имеющие отношения к пути. Такие параметры передаются парами после знака вопроса и отделяются друг от друга знаком амперсанда, то есть
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+http://127.0.0.1:8000/10?key1=value1&key2=value2&...
+\end{lstlisting}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI
+
+app = FastAPI()
 
 
+# http://127.0.0.1:8000/items/10?solver_type=iterative
+@app.get("/items_id/{item_id}")
+async def read_item(item_id: int, solver_type: str = "direct"):
+    return {"item_id" : item_id, "type" : solver_type} # {"item_id" : 10, "type" : "iterative"}
+\end{lstlisting}
+
+В запросе можно передавать булевы значения
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+http://127.0.0.1:8000/items/100?q=test&short=True
+# или так
+http://127.0.0.1:8000/items/100?q=test&short=true
+# или так
+http://127.0.0.1:8000/items/100?q=test&short=1
+# или так
+http://127.0.0.1:8000/items/100?q=test&short=on
+# или так
+http://127.0.0.1:8000/items/100?q=test&short=yes
+\end{lstlisting}
+
+Маршрут может содержать несколько параметров, значения которых будут передаваться в функцию как аргументы
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from typing import Optional, NoReturn
+from fastapi import FastAPI
+
+app = FastAPI()
+
+# http://127.0.0.1:8000/users/1632/items/admin?q=test&short=true
+@app.get("/users/{user_id}/items/{item_id}")
+async def read_item(
+	user_id: int, 
+	item_id: str, 
+	q: Optional[str] = None, 
+	short: bool = False
+) -> NoReturn:
+	item = {"user_id" : user_id, "item_id" : item_id}
+	if q:
+		item.update({"q" : q})
+	if not short:
+		item.update(
+			{"description" : "This is an ..."}
+		)
+
+	return item
+\end{lstlisting}
+
+
+\section{Приемы разработки приложений с графическим интерфейсом пользователя с использованием библиотеки DearPyGui}
 
 
 \section{Конфигурационные файлы как интерфейс доступа к Python-сценарию}
