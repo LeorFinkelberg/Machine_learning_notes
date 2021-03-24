@@ -2141,6 +2141,570 @@ async def read_item(
 	return item
 \end{lstlisting}
 
+С помощью специального класса \texttt{Query} можно добавить, например, ограничение по длине строки на значение параметра
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from typing import Optional, Dict
+
+from fastapi import FastAPI, Query
+
+app = FastAPI()
+
+@app.get("/items/")
+async def read_items(
+    q: Optional[str] = Query(None, max_length=50) # если длина строки превысит 50 символов, то возникнет ошибка
+) -> Dict:
+    results = {"items" [{"item_id" : "Foo"}, {"item_id" : "Bar"}]}
+    if q:
+        results.update({"q" : q})
+    return results
+\end{lstlisting}
+
+ЗАМЕЧАНИЕ: конструкция \texttt{q: Optional[str] = Query(None)} эквивалентна конструкции \texttt{q: Optional[str] = None}, но первый вариант более явный. То есть с помощью \texttt{Query(None)} передается значение по умолчанию \texttt{None}, но без ограничений на строковую константу.
+
+Разумеется можно добавить и ограничение на минимальную длину строки
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+@app.get("/items/")
+async def read_items(
+    q: Optional[str] = Query(
+        None,
+        min_length=3,
+        max_length=50
+    )
+) -> Dict:
+    ...
+\end{lstlisting}
+
+Есть возможность добавить регулярное выражение
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+@app.get("/items/")
+async def read_items(
+    q: Optional[str] = Query(
+        None,
+        min_length=3,
+        max_length=50,
+        regex="^.*python.*$"
+    )
+)
+\end{lstlisting}
+
+С помощью \texttt{Query} можно задавать значения по умолчанию и отличные от \texttt{None}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+@app.get("/items/")
+async def read_items(
+    q: str = Query(
+        "fixedquery",
+        min_length=3
+    )
+) -> Dict:
+    ...
+\end{lstlisting}
+
+Чтобы сделать параметр обязательным, нужно просто не передавать ему значение по умолчанию и не использовать класс \texttt{Query}. Однако, даже когда используется класс \texttt{Qeury} параметр можно сделать обязательным, передав ему в качестве значения по умолчанию многоточие (\texttt{...})
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+@app.get("/items/")
+async def read_items(
+    q: str = Query(
+        ..., # многоточие сообщает FastAPI, что параметр `q` обязательный
+        min_length=3
+    )
+) -> Dict:
+    ...
+\end{lstlisting}
+
+При таком способе определения параметра со значением по умолчанию сохраняются все преимущества использования ограничений, накладываемых на параметр.
+
+Для того чтобы сообщить FastAPI, что параметр может встречаться в URL \emph{несколько} раз, можно использовать следующую конструкцию
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+# http://localhost:8000/items/?q=test&q=fortran
+@app.get("/items/")
+async def read_items(
+    q: Optional[List[str]] = Query(None) # <- NB: обязательно нужен класс Query
+) -> Dict:
+    query_items = {"q" : q}
+    return query_items # {"q":["test","fortran"]}
+\end{lstlisting}
+
+Чтобы объявить параметр запроса с типом списка, как в примере выше, необходимо явно использовать класс \texttt{Query}. Иначе параметр запроса будет интерпретироваться как тело запроса.
+
+Для параметра, который встречается в URL несколько раз, можно явно передать список его значений
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+# http://localhost:8000/items
+@app.get("/items/")
+async def read_items(
+    q: List[str] = Query(
+        ["foo", "bar"]
+    )
+) -> Dict:
+    query_items = {"q" : q}
+    return qeury_items
+\end{lstlisting}
+
+ЗАМЕЧАНИЕ: проверить работоспособность функции \texttt{read\_items} с методом \texttt{GET} (читать) можно несколькими способами:
+\begin{itemize}
+	\item набрав в поисковой строке браузера, например, \texttt{http://localhost:8000/items/88}; тогда в ответ в браузере появится что-нибудь вроде \verb|{"item" : 88}|,
+	
+	\item или с помощью утилиты \texttt{curl}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+curl -X 'GET' \
+  'http://localhost:8000/items/88' \
+  -H 'accept: application/json'
+\end{lstlisting}
+\end{itemize}
+
+Если требуется в URL указать параметр, имя которого считается недопустимым с точки зрения Python, то можно воспользоваться специальным параметром \texttt{alias} класса \texttt{Query}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+# http://localhost:8000/items/?item-query=fortran
+@app.get("/items/")
+async def read_items(
+    q: Optional[str] = Query(
+        None,
+        alias="item-query"
+    ) # q <-> item-query
+) -> Dict:
+    results = {"items" : [{"item_id" : "Foo"}, {"item_id" : "Bar"}]}
+    if q: 
+        results.update({"q" : q})
+    return results # {"items":[{"item_id":"Foo"},{"item_id":"Bar"}],"q":"fortran"}
+\end{lstlisting}
+
+Можно пометить параметр как <<устаревший>> с помощью параметра \texttt{depricated} класса \texttt{Query}.
+
+Ванильный Python ругается, если первым в функции указать параметр со значением по умолчанию (ведь сначала должны идти позиционные аргументы, а уже потом аргументы со значением по умолчанию), но для FastAPI это не имеет никакого значения.
+
+Как и в ванильном Python при объявлении функции можно использовать \verb|*|, для того чтобы сообщить FastAPI о том, что аргументам, стоящим справа от звездочки значения следует передавать явно (то есть по имени), а не позиционно
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI, Path
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+async def read_items(
+    *, # для FastAPI порядок позиционных и именновых аргументов не имеет значения
+    item_id: int = Path(
+        ..., # значения по умолчанию у item_id нет (обязательный параметр)
+        title="The ID of the item to get"
+    ),
+    q: str
+) -> Dict:
+    results = {"item_id": item_id}
+    if q:
+        results.update({"q": q})
+    return results
+\end{lstlisting}
+
+ВАЖНО: класс \texttt{Path} работает также как и класс \texttt{Query}, но только для переменных в контексте маршрута, например, \verb|"/items/{item_id}"|. Класс \texttt{Query} применяется для аргументов, не относящихся к маршруту.
+
+Ограничения можно накладывать разумеется не только на строковые константы, но и на вещественные значения аргументов функции
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+@app.get("/items/{item_id}")
+async def read_items(
+    *, # аргументам, расположенным правее *, значения следует передавать по имени
+    item_id: int = Path(
+        ..., # нет значения по умолчанию
+        title="The ID ...",
+       ge=1 # "Greate than or Equal", т.е. >= 1
+    ),
+    q: str,
+) -> Dict:
+    results = {"item_id" : item_id}
+    if q:
+        results.update({"q" : q})
+    return results
+\end{lstlisting}
+
+Более сложный пример, обобщающий рассмотренные выше приемы оформления аргументов, относящихся и не относящихся к пути
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+# http://localhost:8000/items/1632?num_of_cores=12
+@app.get("/items/{item_id}")
+async def read_items(
+    item_id : int = Path(
+        ... # у item_id нет значения по умолчанию (обязательный параметр)
+    ), 
+    *, # аргументам, стоящим справа от *, следует передавать значение по имени
+    q: Optional[str] = Query( # необязательный параметр, принимающий объект опционального типа
+        None,
+        alias="item-query", # псевдоним
+        title="Query string",
+        desctiption="Query string for the items to search in the database that...",
+        min_length=3,
+        max_length=50,
+        regex="^.*python.*$",
+        deprecated=True,
+    ),
+    solver_type: str = Query(
+        "direct" # значение по умолчанию для переменной, не имеющей отношение к пути
+    ),
+    num_of_cores: int = Query(
+        10, # значение по умолчанию для переменной, не имеющей отношение к пути
+        ge=8, # >= 8
+        le=15, # <= 15
+    )
+) -> Dict:
+    results = {"items" : item_id, "solver_type" : solver_type, "num_of_cores" : num_of_cores}
+    if q:
+        results.update({"q" : q})
+    
+    return results # {"items":1632,"solver_type":"direct","num_of_cores":12}
+\end{lstlisting}
+
+Аналогично можно задать ограничения и для вещественных значений: для вещественных значений следует указывать строгие условия (\texttt{>}, \texttt{<}, но не \texttt{<=} и т.д.)
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+@app.get("/items/{item_id}")
+async def read_items(
+    *,
+    item_id : int = Path(
+        ..., # нет значения по умолчанию (обязательный параметр)
+        ge=0, # >= 0
+        le=1000, # <= 1000
+    )
+    q: str,
+    size: float = Query(
+        ..., # нет значения по умолчанию (обязательный параметр)
+        gt=0, # > 0
+        lt=10.5 # < 10.5
+    )
+)
+\end{lstlisting}
+
+Если нужно передать в запрос дополнительный параметр, не изменяя структуры сложных типов других параметров запроса, то можно воспользоваться классом \texttt{Body}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from typing import Optional
+from fastapi import Body, FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+
+class User(BaseModel):
+    username: str
+    full_name: Optional[str] = None
+
+@app.put("/items/{item_id}")
+async def update_item(
+    item_id: int,
+    item: Item,
+    user: User,
+    importance: int = Body(...)
+):
+    results = {
+    	"item_id" : item_id, "item" : item,
+    	"user" : user, "importance" : importance
+    }
+    return results
+\end{lstlisting}
+
+В этом случае FastAPI ожидает получить тело вида
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+{
+  "item" : {
+    "name" : "Foo",
+    "description" : "The pretender",
+    "price" : 42.0,
+    "tax" : 3.2 
+  },
+  "user" : {
+    "username" : "dave",
+    "full_name" : "Dave Grohl"
+  },
+  "importance" : 5
+}
+\end{lstlisting}
+
+Кончено, вместе с \texttt{Body} можно передавать и обычные параметры запроса
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+@app.put("/items/{item_id}")
+async def update_item(
+    *,
+    item_id: int,
+    item: Item,
+    user: User,
+    importance: int = Body(..., gt=0),
+    q: Optional[str] = None
+):
+    ...
+\end{lstlisting}
+
+Если тело запроса должно быть вложенным, то это легко организовать с помощью параметра \texttt{embed}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+@app.put("/items/{item_id}")
+async def update_item(
+    item_id: int,
+    item: Item = Body(..., embed=True)
+) -> Dict:
+    results = {"item_id" : item_id, "item" : item}
+    return results
+\end{lstlisting}
+
+В этом случае FastAPI будет ожидать тело вида
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+{
+  "item" : {
+    "name" : "Foo",
+    "description" : "The pretender",
+    "price" : 42.0,
+    "tax" : 3.2
+  }
+}
+\end{lstlisting}
+вместо
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+{
+  "name" : "Foo",
+  "description" : "The pretender",
+  "price" : 42.0,
+  "tax" : 3.2
+}
+\end{lstlisting}
+
+Так же как и для классов \texttt{Query}, \texttt{Path} и \texttt{Body} можно организовать дополнительную проверку внутри классов \texttt{pydantic} с помощью \texttt{Field}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from typing import Optional
+
+from fastapi import Body, FastAPI
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    desctiption: Optional[str] = Field(
+        None,
+        title = "The desc...",
+        max_length=300
+    )
+    price: float = Field(
+        ..., # нет значения по умолчанию
+        gt=0,
+        description="The ...",
+    )
+    tax: Optional[float] = None
+    
+@app.put("/items/{item_id}")
+async def update_item(
+    item_id: int,
+    item: Item = Body(
+        ...,
+        embed=True
+    )
+) -> Dict:
+    results = {"item_id" : item_id, "item" : item}
+    return results
+\end{lstlisting}
+
+\texttt{Field} работает так же как \texttt{Query}, \texttt{Path} и \texttt{Body} и принимает те же параметры.
+
+Можно объявить тип возвращаемого объекта в параметре \texttt{response\_model}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+# НИ В КОЕМ СЛУЧАЕ НЕ ДЕЛАТЬ ТАК В ПРОДЕ!!!
+class UserIn(BaseModel):
+    username: str
+    password: str
+    email: EmailStr
+    full_name: Optional[str] = None
+
+# создать пользователя с помощью метода POST
+@app.post("/user/", response_model=UserIn)
+async def create_user(user: UserIn):
+    return user
+\end{lstlisting}
+
+Здесь класс \texttt{UserIn} используется как для объявления входных данных, так и выходных данных. Теперь, когда создается пользователь с паролем, этот пароль возвращается в ответе.
+
+Проверить работу функции \texttt{create\_user} с методом \texttt{POST} можно так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+curl -X 'POST' \
+  'http://localhost:8000/user/' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "username": "string",
+    "password": "string",
+    "email": "user@example.com",
+    "full_name": "string"
+}'
+\end{lstlisting}
+
+Можно создать класс для описания выходной модели без поля для пароля
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+class UserIn(BaseModel):
+    username: str
+    password: str
+    email: EmailStr
+    full_name: Optional[str] = None
+
+class UserOut(BaseModel):
+    username: str
+    email: EmailStr
+    full_name: Optional[str] = None
+
+
+@app.post("/user/", response_model=UserOut)
+async def create_user(user: UserIn):
+    return user
+\end{lstlisting}
+
+ЗАМЕЧАНИЕ: в функциях с методом \texttt{POST} (создать), как в пример выше
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+@app.post("/items/", response_model=UserOut) # POST
+async def create_user(user: UserIn):
+    return user
+\end{lstlisting}
+соответствующий аргумент функции (в данном случае аргумент \texttt{user}) связывается с json-объектом, который передается через флаг \verb|-d| в \texttt{curl}. То есть неявно переменная \texttt{user} как бы получает ссылку на json-объект. В функциях с методом \texttt{GET} (читать) значение переменной функции передается в маршруте, например
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+@app.get("/items/{item_id}")
+async def read_items(item_id: int):
+    ...
+\end{lstlisting}
+
+Для проверки работы функции с новой классом на выходных параметров воспользуемся таким запросом
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+curl -X 'POST' \
+  'http://localhost:8000/user/' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  # то, что передается через -d связывается с аргументом user функции create_user, объявленной выше
+  -d '{ 
+    "username": "Leor",
+    "password": "Evdimonia",
+    "email": "leor.finkelberg@yandex.ru",
+    "full_name": "Leor Finkelberg"
+}'
+\end{lstlisting}
+
+Но ответ не будет содержать пароля
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+{ # без пароля!
+  "username": "Leor",
+  "email": "leor.finkelberg@yandex.ru",
+  "full_name": "Leor Finkelberg"
+}
+\end{lstlisting}
+
+Если ответы содержат много параметров со значением по умолчанию, а интерес представляют только те параметры, которым были переданы значения явно в текущей сессии, то можно использовать параметр \texttt{response\_model\_exclude\_unset}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+@app.get(
+    "/items/{item_id}",
+    response_model=Item,
+    response_model_exclude_unset=True # <- NB
+)
+async def read_item(item_id: str):
+    ...	
+\end{lstlisting}
+
+Тогда ответ будет содержать только те параметры, которым были переданны значения в текущей сессии (параметры со значениями по умолчанию будут опущены).
+
+Отфильтровать параметры на выходе можно с помощью параметров \texttt{response\_model\_exclude} и \texttt{response\_model\_exclude}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+@app.get(
+    "/items/{item_id}/name",
+    response_model=Item,
+    response_model_include={"name", "description"},
+)
+async def read_item_name(item_id: str):
+    return items[item_id] # ответ будет включать только ключи name и description
+
+@app.get(
+    "/items/{item_id}/public",
+    response_model=Item,
+    response_model_exclude={"tax"}
+)
+async def read_item_public_data(item_id: str):
+    return items[item_id] # ответ будет включать все ключи кроме tax
+\end{lstlisting}
+
+
 
 \section{Приемы разработки приложений с графическим интерфейсом пользователя с использованием библиотеки DearPyGui}
 
