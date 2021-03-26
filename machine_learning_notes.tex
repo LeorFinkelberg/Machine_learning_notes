@@ -2704,9 +2704,463 @@ async def read_item_public_data(item_id: str):
     return items[item_id] # ответ будет включать все ключи кроме tax
 \end{lstlisting}
 
+Обновлять данные можно с помощью метода \texttt{PUT}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from typing import List, Optional
+
+from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel
+
+app = FastAPI()
+
+
+class Item(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    tax: float = 10.5
+    tags: List[str] = []
+
+
+items = {
+	"foo": {"name": "Foo", "price": 50.2},
+	"bar": {"name": "Bar", "description": "The bartenders", "price": 62, "tax": 20.2},
+	"baz": {"name": "Baz", "description": None, "price": 50.2, "tax": 10.5, "tags": []},
+}
+
+
+@app.get("/items/{item_id}", response_model=Item) # GET
+async def read_item(item_id: str):
+    return items[item_id]
+
+
+@app.put("/items/{item_id}", response_model=Item) # PUT
+async def update_item(item_id: str, item: Item):
+    update_item_encoded = jsonable_encoder(item)
+    items[item_id] = update_item_encoded
+    return update_item_encoded
+\end{lstlisting}
+
+Теперь чтобы обновить данные направим два запроса
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+$ curl -X 'PUT' \
+  'http://localhost:8000/items/2' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Ansys",
+    "description": "CAE package...",
+    "price": 250,
+    "tax": 0.5,
+    "tags": []
+}'
+$ curl -X 'PUT' \
+  'http://localhost:8000/items/42' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Nastran",
+    "description": "CAE package...",
+    "price": 480,
+    "tax": 8.5,
+    "tags": []
+}'
+\end{lstlisting}
+
+А чтобы прочитать данные запросы для разных идентификационных номеров должны выглядеть так
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+$ curl -X 'GET' \
+  'http://localhost:8000/items/2' \
+  -H 'accept: application/json' # вернет json для Ansys
+$ curl -X 'GET' \
+  'http://localhost:8000/items/42' \
+  -H 'accept: application/json' # вернет json для Nastran
+\end{lstlisting}
+
+В случае, когда данные требуется обновлять частично, удобно использовать \texttt{exclude\_unset}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+class Item(BaseModel):
+	name: Optional[str] = None
+	description: Optional[str] = None
+	price: Optional[float] = None
+	tax: float = 10.5
+	tags: List[str] = []
+
+@app.patch("/items/{item_id}", response_model=Item) # PATCH
+	async def update_item(item_id: str, item: Item):
+	stored_item_data = items[item_id]
+	stored_item_model = Item(**stored_item_data)
+	update_data = item.dict(exclude_unset=True) # <- NB
+	updated_item = stored_item_model.copy(update=update_data)
+	items[item_id] = jsonable_encoder(updated_item)
+	return updated_item
+\end{lstlisting}
+
+Теперь будут учитываться только те значения, которые были переданы явно (т.е. значения по умолчанию учитываться не будут).
+
+Еще можно создавать так называемые подприложения. Пример
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/app")
+async def read_main():
+    return {"message" : "Hello World from main app"}
+    
+subapi = FastAPI()
+
+@subapi.get("/sub")
+async def read_sub():
+    return {"message" : "Hello World from sub API"}
+\end{lstlisting}
+
+Вызов может выглядеть так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+http://localhost:8000/app # {"message":"Hello world from main app"}
+http://localhost:8000/subapi/sub # {"message":"Hello world from sub API"}
+\end{lstlisting}
+
+Для упрощения процедуры передачи данных в приложение, удобно использовать web-сокеты. Пример
+\begin{lstlisting}[
+title = {\sffamily main.py},
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI, WebSocket
+from fastapi.responses import HTMLResponse
+
+app = FastAPI()
+
+html = """
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Main form for ML-app</title>
+  </head>
+  <body>
+    <h1>Enter your params here</h1>
+    <form action="" onsubmit="sendMessage(event)">
+      <input type="text" id="messageText" autocomplete="off"/>
+      <button>Run</button>
+    </form>
+    <ul id='messages'>
+    </ul>
+    <script>
+      var ws = new WebSocket("ws://localhost:8000/ws");
+      ws.onmessage = function(event) {
+	    var messages = document.getElementById('messages')
+	    var message = document.createElement('li')
+	    var content = document.createTextNode(event.data)
+	    message.appendChild(content)
+	    messages.appendChild(message)
+      };
+      function sendMessage(event) {
+	    var input = document.getElementById("messageText")
+	    ws.send(input.value)
+	    input.value = ''
+	    event.preventDefault()
+      }
+    </script>
+  </body>
+</html>
+"""
+
+@app.get("/")
+async def get():
+    return HTMLResponse(html)
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    while True:
+        data = await websocket.receive_text()
+        await websocket.send_text(f"Message text was: {data}")
+\end{lstlisting}
+
+Запускаем как обычно
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+uvicorn main:app --reload
+\end{lstlisting}
+Если все прошло как полагается, то по маршруту \texttt{http://localhost:8000} должна быть доступна форма-интерфейс.
+
+Если требуется, чтобы какие-то операции были выполнены перед запуском приложения, то это можно следующим образом
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI
+
+app = FastAPI()
+
+items = {}
+
+@app.on_event("startup")
+async def startup_event():
+    items["foo"] = {"name" : "Fighters"}
+    items["bar"] = {"name" : "Tenders"}
+    
+@app.get("/items/{item_id}")
+async def read_items(item_id: str):
+    return items[item_id]
+\end{lstlisting}
+
+То есть в данном случае, перед запуском приложения будет создан словарь \texttt{items}.
+
+Аналогично можно создать функцию, которая будет вызываться по завершении работы приложения
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.on_event("shutdown")
+def shutdown_event():
+    with open("log.txt", "a") as log:
+        log.write("Application shutdown")
+        
+@app.get("/items/")
+async def read_items():
+    return [{"name" : "Foo"}]
+\end{lstlisting}
+
+Иногда бывает нужно использовать в сессии пользовательские переменные окружения. Сделать это можно так
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+# ADMIN_EMAIL="leor.finkelberg@yandex.ru" APP_NAME="CAD.ai" uvicorn main:app
+from fastapi import FastAPI
+from pydantic import BaseSettings
+
+class Settings(BaseSettings):
+    app_name: str = "Awesome API"
+    admin_email: str
+    items_per_user: int = 50
+
+settings = Settings()
+app = FastAPI()
+
+@app.get("/info")
+async def info():
+    return {	
+    	"app_name": settings.app_name,
+    	"admin_email": settings.admin_email,
+    	"items_per_user": settings.items_per_user,
+    } # {"app_name":"CAD.ai","admin_email":"leor.finkelberg@yandex.ru","items_per_user":50}
+\end{lstlisting}
+
+Тогда запуск приложения будет выглядеть следующим образом
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+ADMIN_EMAIL="leor.finkelberg@yandex.ru" APP_NAME="CAD.ai" uvicorn main:app
+\end{lstlisting} 
+
+Вот еще один любопытный способ использовать информацию, представленную в конфигурационном файле. Этот способ может быть полезен в ситуациях, когда только часть параметров изменяется в зависимости от окружения.
+
+Создадим скрытый файл \texttt{.env}
+\begin{lstlisting}[
+title = {\sffamily .env},
+style = bash,
+numbers = none	
+]
+# здесь используются только те параметры, котрые изменяются в зависимости от окружения
+ADMIN_EMAIL="leor.finkelberg@yandex.ru"
+APP_NAME="CAD.ai"
+\end{lstlisting}
+
+Затем создадим модуль, который будет вычитывать конфигурацию
+\begin{lstlisting}[
+title = {\sffamily config.py},
+style = ironpython,
+numbers = none	
+]
+from pydantic import BaseSettings
+
+class Settings(BaseSettings):
+    # это базовые параметры
+    app_name: str = "Awesome API"
+    admin_email: str
+    items_per_user: int = 50
+
+    class Config:
+        env_file = ".env" # здесь используются только те параметры, котрые изменяются в зависимости от окружения
+\end{lstlisting}
+
+А затем собственно модуль, который будет использовать данные из конфигурационного файла
+\begin{lstlisting}[
+title = {\sffamily main.py},
+style = ironpython,
+numbers = none
+]
+from functools import lru_cache
+from fastapi import Depends, FastAPI
+from config import Settings
+
+app = FastAPI()
+
+@lru_cache()
+def get_settings():
+    return Settings()
+
+@app.get("/info")
+async def info(settings: Settings = Depends(get_settings)):
+    return {
+	    "app_name" : settings.app_name,
+	    "admin_email" : settings.admin_email,
+	    "items_per_user" : settings.items_per_user,
+    } # {"app_name":"CAD.ai","admin_email":"leor.finkelberg@yandex.ru","items_per_user":50}
+\end{lstlisting}
+
+\subsection{Развертывание FastAPI-приложений на платформе Deta}
+
+Структура проекта для развертывания на платформе Deta \url{https://www.deta.sh/?ref=fastapi}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+.
+ `-- main.py
+ `-- requirements.txt
+\end{lstlisting}
+
+Модуль \texttt{main.py} имеет следующее содержание
+\begin{lstlisting}[
+title = {\sffamily main.py},
+style = ironpython,
+numbers = none	
+]
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
+
+@app.get("/items/{item_id}")
+def read_item(item_id: int):
+    return {"item_id": item_id}
+\end{lstlisting}
+а файл с зависимостями такое содержание
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+fastapi
+\end{lstlisting}
+
+Устанавливать \texttt{uvicorn} для развертывания на Deta не нужно!!!
+
+Теперь нужно создать бесплатный аккаунт на Deta. Устанавливаем утилиту командной строки \texttt{deta}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+curl -fsSL https://get.deta.dev/cli.sh | sh
+\end{lstlisting}
+
+После чего нужно залогиниться
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+deta login
+\end{lstlisting}
+и, находясь в корне проекта, запустить процедуру развертывания
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+deta new
+----------------
+{
+	"name": "fastapideta",
+	"runtime": "python3.7",
+	"endpoint": "https://qltnci.deta.dev", # <---- NB
+	"visor": "enabled",
+	"http_auth": "enabled"
+}
+\end{lstlisting}
+
+Для того чтобы убедиться в работоспособности приложения нужно вставить в браузер URL, созданный платформой Deta (в данном случае это \texttt{https://qltnci.deta.dev}).
+
+Чтобы можно было делиться этой ссылкой следует выполнить <<публичную аунтификацию>>
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+deta auth disable
+\end{lstlisting}
+
+
+\subsection{Развертывание FastAPI-приложения в ручную}
+
+Для того чтобы развернуть FastAPI-приложение в ручную нужно просто установить ASGI-совместимый сервер
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install uvicorn[standard]
+\end{lstlisting}
+
+И запустить приложение, как обычно, но без опции \verb|--reload|
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+uvicorn main:app --host 0.0.0.0 --port 80
+\end{lstlisting}
 
 
 \section{Приемы разработки приложений с графическим интерфейсом пользователя с использованием библиотеки DearPyGui}
+
+
+\section{Использование Google Drive как хранилище артифактов ML-пайплайнов}
+
+Чтобы работать с файлом, размещенным на Google Drive, нужно просто выбрать интересующий файл, открыть публичный доступ к нему \directory{Открыть доступ > Разрешить доступ всем, у кого есть ссылка} и скопировать ссылку
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import pandas as pd
+import requests
+
+url = "https://drive.google.com/file/d/1-7TLGI-6zHxM3ASkCQj6yMLg6mEu5q9n/view?usp=sharing"
+download_path = 5"https://drive.google.com/uc?export=download&id={}".format(url.split('/')[-2])
+# 'https://drive.google.com/uc?export=download&id=1-7TLGI-6zHxM3ASkCQj6yMLg6mEu5q9n'
+
+df = pd.read_csv(download_path)
+df.head()
+\end{lstlisting}
 
 
 \section{Конфигурационные файлы как интерфейс доступа к Python-сценарию}
