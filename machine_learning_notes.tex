@@ -2471,7 +2471,677 @@ dependencies:
 		- hyperopt==0.1
 \end{lstlisting}
 
+\subsection{Конвейер с использованием MLflow}
 
+Рассмотрим пример построения конвейера с использованием MLflow. В корне директории проекта, как обычно, лежит файл \texttt{MLproject} следующего содержания
+\begin{lstlisting}[
+title = {\sffamily MLproject},
+style = bash,
+numbers = none	
+]
+name: multistep_example
+
+conda_env: conda.yaml
+
+# точки входа описывают базовую форму вызова python-сценариев;
+# нужные значения будут передаваться в main.py через mlflow.run(".", entrypoint, parameters)
+entry_points:
+	load_raw_data:
+		command: "python load_raw_data.py"
+
+	etl_data:
+		parameters:
+			ratings_csv: path
+			max_row_limit: {type: int, default: 100000}
+		command: "python etl_data.py --ratings-csv {ratings_csv} --max-row-limit {max_row_limit}"
+
+	als:
+		parameters:
+			ratings_data: path
+			max_iter: {type: int, default: 10}
+			reg_param: {type: float, default: 0.1}
+			rank: {type: int, default: 12}
+		command: "python als.py --ratings-data {ratings_data} --max-iter {max_iter} --reg-param {reg_param} --rank {rank}" # имитирует запуск из командной строки
+
+	train_keras:
+		parameters:
+			ratings_data: path
+			als_model_uri: string
+			hidden_units: {type: int, default: 20}
+		command: "python train_keras.py --ratings-data {ratings_data} --als-model-uri {als_model_uri} --hidden-units {hidden_units}"
+
+	main:
+		parameters:
+			als_max_iter: {type: int, default: 10}
+			keras_hidden_units: {type: int, default: 20}
+			max_row_limit: {type: int, default: 100000}
+		command: "python main.py --als-max-iter {als_max_iter} --keras-hidden-units {keras_hidden_units}
+			--max-row-limit {max_row_limit}"
+\end{lstlisting}
+
+Главный файл \texttt{main.py}, запускает всю цепочку преобразований
+\begin{lstlisting}[
+title = {\sffamily main.py},
+style = ironpython,
+numbers = none	
+]
+import click
+import os
+
+import mlflow
+from mlflow.utils import mlflow_tags
+from mlflow.entities import RunStatus
+from mlflow.utils.logging_utils import eprint
+
+from mlflow.tracking.fluent import _get_experiment_id
+
+
+def _already_ran(entry_point_name, parameters, git_commit, experiment_id=None):
+	"""Best-effort detection of if a run with the given entrypoint name,
+	parameters, and experiment id already ran. The run must have completed
+	successfully and have at least the parameters provided.
+	"""
+	experiment_id = experiment_id if experiment_id is not None else _get_experiment_id()
+	client = mlflow.tracking.MlflowClient()
+	all_run_infos = reversed(client.list_run_infos(experiment_id))
+	for run_info in all_run_infos:
+		full_run = client.get_run(run_info.run_id)
+		tags = full_run.data.tags
+		if tags.get(mlflow_tags.MLFLOW_PROJECT_ENTRY_POINT, None) != entry_point_name:
+			continue
+		match_failed = False
+		for param_key, param_value in parameters.items():
+			run_value = full_run.data.params.get(param_key)
+			if run_value != param_value:
+				match_failed = True
+				break
+			if match_failed:
+				continue
+
+		if run_info.to_proto().status != RunStatus.FINISHED:
+			eprint(
+				("Run matched, but is not FINISHED, so skipping " "(run_id=%s, status=%s)")
+					% (run_info.run_id, run_info.status)
+				)
+			continue
+
+		previous_version = tags.get(mlflow_tags.MLFLOW_GIT_COMMIT, None)
+		if git_commit != previous_version:
+			eprint(
+				(
+					"Run matched, but has a different source version, so skipping "
+					"(found=%s, expected=%s)"
+				)
+					% (previous_version, git_commit)
+			)
+			continue
+		return client.get_run(run_info.run_id)
+	eprint("No matching run has been found.")
+	return None
+
+
+# TODO(aaron): This is not great because it doesn't account for:
+# - changes in code
+# - changes in dependant steps
+def _get_or_run(entrypoint, parameters, git_commit, use_cache=True):
+	existing_run = _already_ran(entrypoint, parameters, git_commit)
+	if use_cache and existing_run:
+		print("Found existing run for entrypoint=%s and parameters=%s" % (entrypoint, parameters))
+		return existing_run
+	print("Launching new run for entrypoint=%s and parameters=%s" % (entrypoint, parameters))
+	submitted_run = mlflow.run(".", entrypoint, parameters=parameters) # запускает соответствующий сценарий из MLproject
+	return mlflow.tracking.MlflowClient().get_run(submitted_run.run_id)
+
+
+@click.command() # важный момент; сообщает, что задекорированная функция является командой
+@click.option("--als-max-iter", default=10, type=int)
+@click.option("--keras-hidden-units", default=20, type=int)
+@click.option("--max-row-limit", default=100000, type=int)
+def workflow(als_max_iter, keras_hidden_units, max_row_limit):
+	# Note: The entrypoint names are defined in MLproject. The artifact directories
+	# are documented by each step's .py file.
+	with mlflow.start_run() as active_run:
+		os.environ["SPARK_CONF_DIR"] = os.path.abspath(".") # создаем переменную окружения; здесь Spark будет искать файл spark-defaults.conf
+		git_commit = active_run.data.tags.get(mlflow_tags.MLFLOW_GIT_COMMIT)
+		# запускает сценарий с точкой входа load_raw_data из MLproject
+		load_raw_data_run = _get_or_run("load_raw_data", {}, git_commit)
+		ratings_csv_uri = os.path.join(load_raw_data_run.info.artifact_uri, "ratings-csv-dir")
+		# запускает сценарий с точкой входа etl_data из MLproject
+		etl_data_run = _get_or_run(
+			"etl_data", {"ratings_csv": ratings_csv_uri, "max_row_limit": max_row_limit}, git_commit
+		)
+		ratings_parquet_uri = os.path.join(etl_data_run.info.artifact_uri, "ratings-parquet-dir")
+
+		# We specify a spark-defaults.conf to override the default driver memory. ALS requires
+		# significant memory. The driver memory property cannot be set by the application itself.
+		# # запускает сценарий с точкой входа als из MLproject
+		als_run = _get_or_run(
+			"als", {"ratings_data": ratings_parquet_uri, "max_iter": str(als_max_iter)}, git_commit
+		)
+		als_model_uri = os.path.join(als_run.info.artifact_uri, "als-model")
+		
+		keras_params = {
+			"ratings_data": ratings_parquet_uri,
+			"als_model_uri": als_model_uri,
+			"hidden_units": keras_hidden_units,
+		}
+		# запускает сценарий с точкой входа train_keras из MLproject
+		_get_or_run("train_keras", keras_params, git_commit, use_cache=False)
+
+
+if __name__ == "__main__":
+	workflow()
+\end{lstlisting}
+
+Здесь функция \texttt{workflow} может принимать аргументы командой строки. Значения аргументам из командной строки можно передать либо непосредственно из командной строки, либо при запуске сценария \texttt{main.py} из-под файла \texttt{MLproject}
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+python main.py --als-max-iter {als_max_iter} --keras-hidden-units {keras_hidden_units} --max-row-limit {max_row_limit}
+\end{lstlisting}
+
+После запуска сценария \texttt{main.py} вызывается функция \texttt{workflow}, которая инициирует <<главный запуск>>. Далее с помощью функции \verb|_get_or_run()| на основании данных, приведенных в файле \texttt{MLproject}, вызываются соответствующие точки входа. Например, вызов
+
+\noindent\verb|_get_or_run("load_raw_data", {}, git_commit)|
+запускает сценарий \texttt{load\_raw\_data.py} как
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+python load_raw_data.py
+\end{lstlisting}
+
+\begin{lstlisting}[
+title = {\sffamily load\_raw\_data.py},
+style = ironpython,
+numbers = none	
+]
+import requests
+import tempfile
+import os
+import zipfile
+import pyspark
+import mlflow
+import click
+
+
+@click.command(
+	help="Downloads the MovieLens dataset and saves it as an mlflow artifact "
+	" called 'ratings-csv-dir'."
+) # сообщает, что эта функция может принимать аргументы командной строки
+@click.option("--url", default="http://files.grouplens.org/datasets/movielens/ml-20m.zip") # аргумент со значением по умолчанию
+def load_raw_data(url):
+	with mlflow.start_run() as mlrun:
+		local_dir = tempfile.mkdtemp()
+		local_filename = os.path.join(local_dir, "ml-20m.zip")
+		print("Downloading %s to %s" % (url, local_filename))
+		r = requests.get(url, stream=True)  # <- NB
+		with open(local_filename, "wb") as f:
+			for chunk in r.iter_content(chunk_size=1024): # файл можно скачивать блоками
+				if chunk:  # filter out keep-alive new chunks
+					f.write(chunk)
+
+		extracted_dir = os.path.join(local_dir, "ml-20m")
+		print("Extracting %s into %s" % (local_filename, extracted_dir))
+		with zipfile.ZipFile(local_filename, "r") as zip_ref:
+			zip_ref.extractall(local_dir)
+
+		ratings_file = os.path.join(extracted_dir, "ratings.csv")
+
+		print("Uploading ratings: %s" % ratings_file)
+		mlflow.log_artifact(ratings_file, "ratings-csv-dir")
+
+
+if __name__ == "__main__":
+	load_raw_data()
+\end{lstlisting}
+
+В сценарии \texttt{load\_raw\_data.py} функция \texttt{load\_raw\_data} может принимать аргументы командной строки. В данном случае у аргумента функции \texttt{url} есть значение по умолчанию. Функция \texttt{load\_raw\_data} инициирует свой собственный запуск, в котором создается временная директория для файла \texttt{ml-20m.zip}, который скачивается по заданному URL.
+
+Далее zip-файл с помощью \texttt{zip\_ref.extracall(local\_dir)} распаковывается во временную директорию. Остается только залогировать этот файл с помощью MLflow
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+mlflow.log_artifact(
+  ratings_file, # это путь до файла, который требуется залогировать
+  "ratings-csv-dir" # это путь куда нужно поместить файл; путь отсчитывается от поддиректории artifacts
+)
+\end{lstlisting}
+
+Здесь файл \texttt{ratings.csv}, расположенный во временной директории, с помощью \texttt{mlflow.log\_artifacts} будет размещен в поддиректории \texttt{artifacts}, ассоциированной с соответствующим запуском, а именно
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+...
+  |- artifacts/
+       |- ratings-csv-dir/
+            |- ratings.csv # <- NB
+\end{lstlisting}
+
+Теперь переменная \texttt{load\_raw\_data\_run} в \texttt{main.py} может получить ссылку на объект запуска. Извлекаем путь до поддиректории \texttt{artifacts} этого запуска с помощью
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+load_raw_data_run.info.artifact_uri
+\end{lstlisting}
+
+Затем конструируем путь до поддиректории \texttt{ratings-csv-dir}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+ratings_csv_uri = os.path.join(load_raw_data_run.info.artifact_uri, "ratings-csv-dir")
+\end{lstlisting}
+и этот путь передаем в следующую точку вызова
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+etl_data_run = _get_or_run(
+    "etl_data",
+    {
+    	"ratings_csv": ratings_csv_uri, # путь до директории, в которой лежит ratings.csv
+    	"max_row_limit": max_row_limit
+    },
+    git_commit
+) # запускает сценарий etl_data на основании MLproject
+\end{lstlisting}
+
+Точка входа \texttt{etl\_data} в \texttt{MLproject} ожидает два параметра \texttt{ratings\_csv} и \verb|max_row_limit|. Значения этим параметрам мы и передаем через функцию \verb|_get_or_run()|
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+...
+mlflow.run(
+    ".",
+    entrypoint, # etl_data
+    parameters=parametrs # {"ratings_csv": ratings_csv_uri, "max_row_limit": max_row_limit}
+)
+\end{lstlisting}
+
+Теперь нужно смотреть как организован сценарий \texttt{etl\_data.py}
+\begin{lstlisting}[
+title = {\sffamily etl\_data.py},
+style = ironpython,
+numbers = none	
+]
+import tempfile
+import os
+import pyspark
+import mlflow
+import click
+
+
+@click.command( # задекорированная функция может принимать аргументы командной строки
+	help="Given a CSV file (see load_raw_data), transforms it into Parquet "
+		"in an mlflow artifact called 'ratings-parquet-dir'"
+)
+@click.option("--ratings-csv")
+@click.option(
+	"--max-row-limit", default=10000, help="Limit the data size to run comfortably on a laptop."
+)
+def etl_data(ratings_csv, max_row_limit):
+	with mlflow.start_run() as mlrun:
+		tmpdir = tempfile.mkdtemp()
+		ratings_parquet_dir = os.path.join(tmpdir, "ratings-parquet")
+		spark = pyspark.sql.SparkSession.builder.getOrCreate()
+		print("Converting ratings CSV %s to Parquet %s" % (ratings_csv, ratings_parquet_dir))
+		ratings_df = (
+			spark.read.option("header", "true")
+			.option("inferSchema", "true")
+			.csv(ratings_csv) # читается csv-файл из директории, путь до которой мы передали в main.py
+			.drop("timestamp")
+		)  # удаляем неиспользуемый столбец
+		ratings_df.show()
+		if max_row_limit != -1:
+			ratings_df = ratings_df.limit(max_row_limit)
+		ratings_df.write.parquet(ratings_parquet_dir) # запись csv-файла в формает parquet
+		print("Uploading Parquet ratings: %s" % ratings_parquet_dir)
+		
+		mlflow.log_artifacts(
+			ratings_parquet_dir, # путь до директории, содержание которой нужно скопировать в заданную директорию
+			"ratings-parquet-dir" # путь до директории относительно artifacts/, куда нужно скопировать данные
+		)
+
+
+if __name__ == "__main__":
+	etl_data()
+\end{lstlisting}
+
+Сценарий \texttt{etl\_data.py} содержит функцию \texttt{etl\_data}, которая может принимать аргументы командной строки. Функция инициирует свой собственный запуск, в котором создается временная директория, к которой на следующей строке добавляется имя директории \texttt{ratings-parquet}.
+
+Далее инициируется сессия PySpark, читается csv-файл, отсекаются первые 10000 строк этого файла и результат записывается в формате parquet в поддиректорию \texttt{ratings-parquet-dir}, расположенную во временной директории.
+
+В результате в поддиректории \texttt{ratings-parquet-dir} директории \texttt{artifacts} будет лежать файл с расширением \texttt{*.parquet}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+...
+  |- artifacts/
+       |- ratings-parquet-dir/
+            |- part-00000-5ab4571f-b0f0-438a-b5a5-...c000.snappy.parquet
+\end{lstlisting}
+
+То есть, теперь в указанной директории лежит parquet-файл. Путь до директории \texttt{ratings-parquet-dir} в поддиректори, ассоциированной с определенным запуском, через конструкцию
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+ratings_parquet_uri = os.path.join(
+    etl_data_run.info.artifact_uri,
+    "ratings-parquet-dir"
+)
+\end{lstlisting}
+можно передать в следующую точку входа, а именно
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+als_run = _get_or_run(
+    "als",
+    {
+        "ratings_data" : ratings_parquet_uri, # путь до директории с parquet-файлом
+        "max_iter" : str(als_max_iter)
+    },
+    git_commit
+)
+\end{lstlisting}
+
+В файле \texttt{MLproject} вызов точки входа \texttt{als} выглядит так
+\begin{lstlisting}[
+title = {\sffamily фрагмент MLproject},
+style = bash,
+numbers = none	
+]
+...
+	als:
+		parameters:
+			ratings_data: path
+			max_iter: {type: int, default: 10}
+			reg_param: {type: float, default: 0.1}
+			rank: {type: int, default: 12}
+		command: python als.py
+			--ratings-data {ratings_data}
+			--max-iter {max_iter}
+			--reg-param {reg_param}
+			--rank {rank}"
+...
+\end{lstlisting}
+
+Посмотрим на организацию сценария \texttt{als.py}
+
+\begin{lstlisting}[
+title = {\sffamily als.py},
+style = ironpython,
+numbers = none	
+]
+import click
+
+import mlflow
+import mlflow.spark
+
+import pyspark
+from pyspark.ml import Pipeline
+from pyspark.ml.recommendation import ALS
+from pyspark.ml.evaluation import RegressionEvaluator
+
+
+@click.command()
+@click.option("--ratings-data")
+@click.option("--split-prop", default=0.8, type=float)
+@click.option("--max-iter", default=10, type=int)
+@click.option("--reg-param", default=0.1, type=float)
+@click.option("--rank", default=12, type=int)
+@click.option("--cold-start-strategy", default="drop")
+def train_als(ratings_data, split_prop, max_iter, reg_param, rank, cold_start_strategy):
+	seed = 42
+
+	spark = pyspark.sql.SparkSession.builder.getOrCreate()
+
+	ratings_df = spark.read.parquet(ratings_data)
+	(training_df, test_df) = ratings_df.randomSplit([split_prop, 1 - split_prop], seed=seed)
+	training_df.cache()
+	test_df.cache()
+
+	mlflow.log_metric("training_nrows", training_df.count())
+	mlflow.log_metric("test_nrows", test_df.count())
+
+	print("Training: {0}, test: {1}".format(training_df.count(), test_df.count()))
+
+	als = ( # создаем экземпляр класса ML-модели
+		ALS()
+		.setUserCol("userId")
+		.setItemCol("movieId")
+		.setRatingCol("rating")
+		.setPredictionCol("predictions")
+		.setMaxIter(max_iter)
+		.setSeed(seed)
+		.setRegParam(reg_param)
+		.setColdStartStrategy(cold_start_strategy)
+		.setRank(rank)
+	)
+	# собираем конвейер
+	als_model = Pipeline(stages=[als]).fit(training_df)
+
+	reg_eval = RegressionEvaluator(predictionCol="predictions", labelCol="rating", metricName="mse")
+	# делаем предсказания
+	predicted_test_dF = als_model.transform(test_df)
+
+	test_mse = reg_eval.evaluate(predicted_test_dF)
+	train_mse = reg_eval.evaluate(als_model.transform(training_df))
+
+	print("The model had a MSE on the test set of {0}".format(test_mse))
+	print("The model had a MSE on the (train) set of {0}".format(train_mse))
+	# логируем метрики
+	mlflow.log_metric("test_mse", test_mse)
+	mlflow.log_metric("train_mse", train_mse)
+	# логируем модель относительно поддиректории artifacts
+	mlflow.spark.log_model(als_model, "als-model")
+
+
+if __name__ == "__main__":
+	train_als()
+\end{lstlisting}
+
+ВАЖНО: декоратор \verb|@click.command()| превращает задекорированную функцию в вызываемый сценарий. То есть, если из командной строки вызывать сценарий, который содержит функцию, задекорированную \verb|@click.command()|, то эта функция будет вызвана при запуске сценария.
+
+В этом сценарии мы снова запускает spark-сессию, а затем читаем parquet-файл. Потом разбиваем этот файл на обучающий и тестовый поднабор и кешируем их
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+ratings_df =spark.read.parquet(ratings_data)
+(training_df, test_df) = ratings_df.randomSplit([split_prop, 1 - split_prop], seed=seed)
+training_df.cache()
+test_df.cache()
+\end{lstlisting}
+
+Затем кофигурируем модель, обучаем ее, делаем прогноз и логируем метрики и модель. Обученная модель будет располагаться в поддиректории \texttt{als-model} поддиректории \texttt{artifacts}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+./
+  |- mlruns/
+       |- 0/ # id эксперимента
+          |- b552...699/ # id запуска
+               |- artifacts/
+                    |- als-model
+                         |- sparkml
+                            MLmodel
+                            conda.yaml
+\end{lstlisting}
+
+Снова конструируем путь до директории, в которой лежит обученная spark-модель
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+als_model_uri = os.path.join(
+    als_run.info.artifact_uri, "als-model"
+)
+\end{lstlisting}
+
+Теперь этот путь можно передать в следующую точку входа
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+keras_params = {
+	"ratings_data": ratings_parquet_uri, # путь до директории с parquet-файлом
+	"als_model_uri": als_model_uri,      # путь до директории с обученной моделью
+	"hidden_units": keras_hidden_units,
+}
+\end{lstlisting}
+
+Наконец, можно запустить последнюю точку входа
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+mlflow.run(
+    ".",
+    entrypoint, # train_keras
+    parameters=keras_params
+)
+\end{lstlisting}
+которая запускает
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+python train_keras.py
+	--ratings-data {ratings_data}
+	--als-model-uri {als_model_uri}
+	--hidden-units {hidden_units}
+\end{lstlisting}
+
+Рассмотрим сценарий \texttt{train\_keras.py}
+\begin{lstlisting}[
+title = {\sffamily train\_keras.py},
+style = ironpython,
+numbers = none	
+]
+import click
+
+import mlflow
+import mlflow.keras
+import mlflow.spark
+
+from itertools import chain
+import pyspark
+from pyspark.sql.functions import *
+from pyspark.sql.types import *
+
+import tensorflow as tf
+import tensorflow.keras as keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
+import numpy as np
+import pandas as pd
+
+
+@click.command()
+@click.option("--ratings-data", help="Path readable by Spark to the ratings Parquet file")
+@click.option("--als-model-uri", help="Path readable by load_model to ALS MLmodel")
+@click.option("--hidden-units", default=20, type=int)
+def train_keras(ratings_data, als_model_uri, hidden_units):
+	np.random.seed(0)
+	tf.set_random_seed(42)  # For reproducibility
+	# инициируем сессию
+	spark = pyspark.sql.SparkSession.builder.getOrCreate()
+	# загружаем обученную модель
+	als_model = mlflow.spark.load_model(als_model_uri).stages[0]
+	# читаем parquet-файл
+	ratings_df = spark.read.parquet(ratings_data)
+	# разбиваем на обучение и тест
+	(training_df, test_df) = ratings_df.randomSplit([0.8, 0.2], seed=42)
+	training_df.cache()
+	test_df.cache()
+
+	mlflow.log_metric("training_nrows", training_df.count())
+	mlflow.log_metric("test_nrows", test_df.count())
+
+	print("Training: {0}, test: {1}".format(training_df.count(), test_df.count()))
+
+	user_factors = als_model.userFactors.selectExpr("id as userId", "features as uFeatures")
+	item_factors = als_model.itemFactors.selectExpr("id as movieId", "features as iFeatures")
+	joined_train_df = training_df.join(item_factors, on="movieId").join(user_factors, on="userId")
+	joined_test_df = test_df.join(item_factors, on="movieId").join(user_factors, on="userId")
+
+	# We'll combine the movies and ratings vectors into a single vector of length 24.
+	# We will then explode this features vector into a set of columns.
+	def concat_arrays(*args):
+		return list(chain(*args))
+
+	concat_arrays_udf = udf(concat_arrays, ArrayType(FloatType()))
+
+	concat_train_df = joined_train_df.select(
+		"userId",
+		"movieId",
+		concat_arrays_udf(col("iFeatures"), col("uFeatures")).alias("features"),
+		col("rating").cast("float"),
+	)
+	concat_test_df = joined_test_df.select(
+		"userId",
+		"movieId",
+		concat_arrays_udf(col("iFeatures"), col("uFeatures")).alias("features"),
+		col("rating").cast("float"),
+	)
+
+	pandas_df = concat_train_df.toPandas()
+	pandas_test_df = concat_test_df.toPandas()
+
+	# This syntax will create a new DataFrame where elements of the 'features' vector
+	# are each in their own column. This is what we'll train our neural network on.
+	x_test = pd.DataFrame(pandas_test_df.features.values.tolist(), index=pandas_test_df.index)
+	x_train = pd.DataFrame(pandas_df.features.values.tolist(), index=pandas_df.index)
+
+	# Show matrix for example.
+	print("Training matrix:")
+	print(x_train)
+
+	# Create our Keras model with two fully connected hidden layers.
+	model = Sequential()
+	model.add(Dense(30, input_dim=24, activation="relu"))
+	model.add(Dense(hidden_units, activation="relu"))
+	model.add(Dense(1, activation="linear"))
+
+	model.compile(loss="mse", optimizer=keras.optimizers.Adam(lr=0.0001))
+
+	filepath = "/tmp/ALS_checkpoint_weights.hdf5"
+	early_stopping = EarlyStopping(monitor="val_loss", min_delta=0.0001, patience=2, mode="auto")
+
+	model.fit(
+		x_train,
+		pandas_df["rating"],
+		validation_split=0.2,
+		verbose=2,
+		epochs=3,
+		batch_size=128,
+		shuffle=False,
+		callbacks=[early_stopping],
+	)
+
+	train_mse = model.evaluate(x_train, pandas_df["rating"], verbose=2)
+	test_mse = model.evaluate(x_test, pandas_test_df["rating"], verbose=2)
+	mlflow.log_metric("test_mse", test_mse)
+	mlflow.log_metric("train_mse", train_mse)
+
+	print("The model had a MSE on the test set of {0}".format(test_mse))
+	mlflow.keras.log_model(model, "keras-model") # логируем модель в поддиректории keras-model поддиректории artifacts
+
+
+if __name__ == "__main__":
+	train_keras()
+\end{lstlisting}
 
 
 \section{WSGI- и ASGI-серверы}
