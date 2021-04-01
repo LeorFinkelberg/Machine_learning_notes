@@ -1797,6 +1797,119 @@ python file_name.py --config-path config.yaml
 
 Ознакомиться с руководствами по использованию mlflow можно на ресурсе \url{https://mlflow.org/docs/latest/tracking.html}.
 
+\subsection{Общий сценарий использования MLflow на примере библиотеки H2O}
+
+Пусть директория проекта имеет вид
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+h2o/
+  |- MLproject
+  |- conda.yaml
+  |- random_forest.py
+  |- wine-quality.csv 
+\end{lstlisting}
+
+Конфигурационный файл проекта имеет вид
+\begin{lstlisting}[
+title = {\sffamily MLproject},
+style = bash,
+numbers = none	
+]
+name: h2o-example
+
+conda_env: conda.yaml # для запуска будет создано conda-окружение
+
+entry_points:
+	main:
+		command: "python random_forest.py"  
+\end{lstlisting}
+
+Файл зависимостей conda-окружения выглядит так
+\begin{lstlisting}[
+title = {conda.yaml},
+style = bash,
+numbers = none	
+]
+name: h2o_example
+channels:
+	- defaults
+	- anaconda
+	- conda-forge
+dependencies:
+	- python=3.6
+	- numpy=1.14.2
+	- pandas
+	- pip
+	- pip:
+	- h2o
+	- mlflow>=1.0
+\end{lstlisting}
+
+Собственно сценарий
+\begin{lstlisting}[
+title = {\sffamily random\_forest.py},
+style = bash,
+numbers = none
+]
+import h2o
+from h2o.estimators.random_forest import H2ORandomForestEstimator
+
+import mlflow
+import mlflow.h2o
+
+h2o.init()
+
+wine = h2o.import_file(path="wine-quality.csv")
+r = wine["quality"].runif()
+train = wine[r < 0.7]
+test = wine[0.3 <= r]
+
+
+def train_random_forest(ntrees):
+	# запуск будет инициироваться для каждого значения ntrees
+	with mlflow.start_run():
+		rf = H2ORandomForestEstimator(ntrees=ntrees)
+		train_cols = [n for n in wine.col_names if n != "quality"]
+		rf.train(train_cols, "quality", training_frame=train, validation_frame=test)
+		
+		mlflow.log_param("ntrees", ntrees)
+		
+		mlflow.log_metric("rmse", rf.rmse())
+		mlflow.log_metric("r2", rf.r2())
+		mlflow.log_metric("mae", rf.mae())
+		
+		mlflow.h2o.log_model(rf, "model")
+
+
+if __name__ == "__main__":
+	for ntrees in [10, 20, 50, 100, 200]:
+		train_random_forest(ntrees)
+\end{lstlisting}
+
+Запустить проект можно с помощью конструкции
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+mlflow run . # имя точки входа не указано, значит будет запущена точка входа по умолчанию, т.е. точка входа с именем main
+\end{lstlisting}
+
+После выполнения этой команды MLflow обратиться к файлу \texttt{MLproject} и на основании информации, приведенной в файле \texttt{conda.yaml} соберет conda-окружение. Затем будет найдена точка с именем main, которая требует запустить сценарий \texttt{random\_forest.py}. В результате MLflow выполнит 5 запусков с различными значениями количества деревьев в случайном лесе.
+
+Сравнить значения метрик качества можно с помощью графического интерфейса
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+mlflow ui
+\end{lstlisting}
+
+ВАЖНО: здесь каждый вызов функции \texttt{train\_random\_forest()} будет приводить к инициации mlflow-запуска.
+
+\subsection{Общие сведения}
+
 Пример python-сценария с mlflow-вставками
 \begin{lstlisting}[
 style = ironpython,
@@ -1914,7 +2027,7 @@ numbers = none
 mlflow models serve -m runs:/b64437a.../model
 \end{lstlisting}
 
-То есть, другими словами команда \texttt{mlflow models serve} превращает python-сценарий в web-сервис, который (пока) крутится на петлевом интерфейсе на порту 5000.
+То есть, другими словами команда \texttt{mlflow models serve} превращает python-приложение в web-сервис, который работает на локальном петлевом интерфейсе на порту 5000.
 
 Теперь можно послать запрос на предсказание
 \begin{lstlisting}[
@@ -1928,6 +2041,16 @@ curl -X POST http://127.0.0.1:5000/invocations \
          "volatile acidity" : 1.66,
          ...
       }]' # 5.82505...
+\end{lstlisting}
+
+Запуск проекта может выглядеть так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+mlflow models serve \
+  -m /Users/mlflow/mlflow-prototype/mlruns/0/7c1...174/artifacts/model \
+  -p 1234
 \end{lstlisting}
 
 
@@ -2113,6 +2236,8 @@ dependencies:
     - mlflow>=1.0
 \end{lstlisting}
 
+ВАЖНО: настраивать окружение можно не только с помощью блока \texttt{conda\_env: conda.yaml} в файле \texttt{MLproject}, но и с помощью блока \texttt{docker\_env}; в отличие от \texttt{conda\_env} блок \texttt{docker\_env} позволяет включать не только python-зависимости.
+
 Теперь, если запустить этот код командой 
 \begin{lstlisting}[
 style = bash,
@@ -2121,6 +2246,17 @@ numbers = none
 mlflow run sklearn_elasticnet_wine -P alpha=0.42
 \end{lstlisting}
 то MLflow запустит код в новом виртуальном окружении conda, зависимости которого описываются в \texttt{conda.yaml}.
+
+ВАЖНО: параметры сценарию можно передать либо позиционно при запуске \texttt{python}, либо с помощью именованных флагов при запуске \texttt{python}, либо с помощью флага \verb|-P| при \texttt{mlflow run}, т.е.
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+# позиционная передача значений аргументам
+python script_name.py 0.3 1.0 # сценарий должен быть адаптирован для такой передачи
+python script_name.py --learning-rate=0.3 --colsample-bytree=1.0 # сценарий должен быть адаптирован для такой передачи (argparse, click etc.)
+mlflow run . -P learning_rate=0.3 -P colsample_bytree=1.0
+\end{lstlisting}
 
 Если в корне репозитория лежит файл \texttt{MLproject}, то можно запустить код из репозитория, просто указав его URL
 \begin{lstlisting}[
@@ -2175,6 +2311,7 @@ curl -X POST \
 
 Рассмотрим пример подбора гиперпараметров с использованием различных стратегий
 \begin{lstlisting}[
+title = {\sffamily train.py},
 style = ironpython,
 numbers = none	
 ]
@@ -3143,6 +3280,46 @@ if __name__ == "__main__":
 	train_keras()
 \end{lstlisting}
 
+ВАЖНО: если в файле \texttt{MLproject} какой-то параметр не имеет значения по умолчанию
+\begin{lstlisting}[
+title = {\sffamily MLproject},
+style = bash,
+numbers = none	
+]
+name: docker-example
+
+docker_env:
+	image:  mlflow-docker-example
+
+entry_points:
+	main:
+		parameters:
+			alpha: float # нет значения по умолчанию
+			l1_ratio: {type: float, default: 0.1}
+		command: "python train.py --alpha {alpha} --l1-ratio {l1_ratio}"
+\end{lstlisting}
+то значение этому параметру можно передать при запуске проекта, например
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+mlflow run example/docker -P alpha=0.3
+\end{lstlisting}
+
+Здесь проект запускается без указания точки входа, что сообщает MLflow о требовании запустить точку входа с именем по умолчанию (т.е. main). MLflow ищет в файле \texttt{MLproject} точку входа с именем main и запускает соответствующую команду.
+
+Разумеется можно комбинировать именованные флаги и флаги \verb|-P|
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+mlflow run . -e hyperopt \
+    --experiment-name RAPIDS-CLI \ # специальный флаг, не имеющий отношения к опциям данной точки входа
+    --conda-env=$PWD/envs/conda.yaml \
+    -P fpath=airline_small.parquet
+\end{lstlisting}
+
+Флаг \verb|-P| указывает, что в файле \texttt{MLproject} у точки входа с именем \texttt{hyperopt} есть параметр с именем \texttt{fpath}. Однако сценарий адаптирован под ситуацию, когда нужно принять значение флага \verb|--conda-env|, даже если он не описан в \texttt{MLproject}.
 
 \section{WSGI- и ASGI-серверы}
 
