@@ -32,6 +32,7 @@
 \RequirePackage{color}
 \RequirePackage{colortbl}  % настраивает цвет таблицы
 \RequirePackage{textcomp}
+\RequirePackage{algorithmic}
 % --------- MAC APPLE ---------
 \RequirePackage{menukeys}  % для спецсимволов mac
 \tikzset{tw@shadowedangularkeys@base/.style={%
@@ -401,3 +402,6 @@
 
 \columnseprule=0.4pt  % рисует вертикальную черту между колонками при наборе в две колонке \documentclass[twocolumn]{article}
 \newcommand{\bydef}{\stackrel{\mathrm{def}}{=}}
+% для оформления псевдокода
+\def\algorithmicrepeat{\textbf{повторять}}
+\def\algorithmicuntil{\textbf{пока}}
