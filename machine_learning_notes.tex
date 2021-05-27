@@ -6744,6 +6744,21 @@ DEEPSOURCE\_DSN=https://0a69347b13674f13a8ca39b9464cb682@deepsource.io
 
 \section{EM-алгоритм и разделение смеси распределений}
 
+EM-алгоритм -- алгоритм нахождения \emph{оценок максимального правдоподобия} параметров вероятностных моделей со \emph{скрытыми переменными}\footnote{Скрытые переменные -- переменные, которые не могут быть измерены в явном виде, а могут только быть выведены через математические модели с использованием наблюдаемых переменных}. На E-шаге (expectation) вычисляется ожидаемое значение \emph{функции правдоподобия}, при этом скрытые переменные рассматриваются как наблюдаемые. На M-шаге (maximization) вычисляется оценка максимального правдоподобия, таким образом увеличивается ожидаемое правдоподобие, вычисляемое на E-шаге. Затем значение используется для E-шаге на следующей итерации. Алгоритм выполняется до сходимости.
+
+EM-алгоритм итеративно улучшает начальную оценку $ \Theta_0 $, вычисляя новые значения оценок $ \Theta_1 $, $ \Theta_0 $ и так далее. На каждом шаге переход к $ \Theta_{n + 1} $ от $ \Theta_n $ выполняется следующим образом
+\begin{align*}
+	\Theta_{n + 1} = \underset{\Theta}{\arg \max}\, Q(\Theta),
+\end{align*}
+где $ Q(\Theta) $ -- матожидание логарифмической функции правдоподобия.
+
+$ Q(\Theta) $ вычисляется следующим образом
+\begin{align*}
+	Q(\Theta) = \mathbf{E} \big[ \log p(X, T | \Theta) | X \big]
+\end{align*}
+то есть это условное матожидание при условии X.
+
+
 В тех случаях, когда <<форму>> класса не удается описать каким-либо одним распределением, можно попробывать описать ее смесью распределений.
 
 Плотность распределения на $ X $ имеет вид смеси $ k $ распределений
@@ -6766,6 +6781,8 @@ DEEPSOURCE\_DSN=https://0a69347b13674f13a8ca39b9464cb682@deepsource.io
 	\ln L(\vec{x}, \theta) = \sum_{i=1}^{n} \ln f_X(x_i; \theta),
 \end{align*}
 часто называют \emph{логарифмической функцией правдоподобия}.
+
+Таким 
 
 Задача разделения смеси заключается в том, чтобы, имея выборку $ X^m $ случайных и независимых наблюдений из смеси $ p(x) $, зная число $ k $ и функцию $ \varphi $, оценить вектор параметров $ \Theta = (w_1, \ldots, w_k, \theta_1, \ldots, \theta_k) $.
 
@@ -12746,7 +12763,7 @@ conn_info = {
     'kerberos_host_name' : 'vlcuster.example.com'
 }
 
-with vertica_python.conn(**conn_info) as conn:
+with vertica_python.connect(**conn_info) as conn:
     # do things
 \end{lstlisting}
 
@@ -12777,6 +12794,39 @@ with vertica_python.connect(**conn_info) as conn:
     cur = conn.cursor()
     cur.execute('SELECT NODE_NAME FROM V_MONITOR.CURRENT_SESSION')
     print('Client redirects to node:', cur.fetchone()[0])
+\end{lstlisting}
+
+А с помощью библиотеки VerticaPy \url{https://github.com/vertica/VerticaPy} к хранящимся в СУБД данным можно применять модели машинного обучения. Например
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import vertica_python
+from verticapy.learn.datasets import load_titanic
+from verticapy.learn.model_selection import cross_validate
+from verticapy.learn.ensemble import RandomForestClassifier
+
+# Connection using all the DSN information
+conn_info = {
+	'host': "10.211.55.14", 
+	'port': 5433, 
+	'user': "dbadmin", 
+	'password': "XxX", 
+	'database': "testdb"
+}
+
+cur = vertica_python.connect(** conn_info).cursor()
+
+vdf = load_titanic(cursor = cur)
+
+# Data Preparation
+vdf["sex"].label_encode()["boat"].fillna(method = "0ifnull")["name"].str_extract(' ([A-Za-z]+)\.').eval("family_size", expr = "parch + sibsp + 1").drop(columns = ["cabin", "body", "ticket", "home.dest"])["fare"].fill_outliers().fillna()
+
+# Model Evaluation
+cross_validate(RandomForestClassifier("rf_titanic", cur, max_leaf_nodes = 100, n_estimators = 30), 
+vdf, ["age", "family_size", "sex", "pclass", "fare", "boat"], 
+"survived", 
+cutoff = 0.35)
 \end{lstlisting}
 
 Доступ к колоночной аналитической СУБД \texttt{ClickHouse}, позволяющей выполнять аналитические запросы в режиме реального времени на структурированных больших данных, можно получить с помощью Python-библиотеки \texttt{clickhouse\_driver}\footnote{Устанавливается с помощью менеджера пакетов \texttt{pip}: \texttt{pip install clickhouse-driver}}
