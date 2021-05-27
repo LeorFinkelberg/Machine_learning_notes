@@ -12745,7 +12745,17 @@ async def iterate(conn: Connection):
 
 В случае когда используется связка \texttt{SQLAlchemy} и \texttt{asyncpg}, можно воспользоваться специальной библиотекой \texttt{asyncpgsa} \url{https://asyncpgsa.readthedocs.io/en/latest/}.
 
-Для работы с аналитической СУБД \texttt{Vertica} есть своя библиотека \texttt{vertica\_python}\footnote{Устанавливается как обычно с помощью менеджера пакетов \texttt{pip}: \texttt{pip install vertica-python}} \url{https://github.com/vertica/vertica-python}
+Что касается аналитических СУБД, то можно выделить замечательную \texttt{Vertica}. Скачать Community Edition версию \texttt{Vertica} можно по ссылке \url{https://www.vertica.com/download/vertica/community-edition/}. В разделе Community Edition xx.x.x Virtual Machine следует клинуть на Open Virtualization Format. После чего начнется скачивание OVA-файла Vertica.
+
+OVA-файл это пакет, содержащий файлы, используемые для описания виртуальной машины, который включает файл дескриптора \texttt{.OVF}, необзятельный файл манифеста \texttt{.MF}, файлы сертификатов и другие связанные файлы.
+
+OVA-файлы это файлы Open Virtual Appliance, которые еще иногда называют файлами Open Virtual Application или файлами Open Virtualization Format Archive. Они используются программами виртуализации для хранения различных файлов, связанных с виртуальной машиной.
+
+Другими словами, OVA-файл -- это открытое устройство виртуализации, содержащее сжатую версию устанавливаемой виртуальной машины.
+
+Скачав OVA-файл остается только запустить его, например, в VirtualBox. Виртуальная машина \texttt{vertica\_community\_edition-xx.x.x-x.ova} будет содержать собственно Vertica Community Edition, VMart EXample Database, VMart Managment Console, Vertica Administration Tools and vsql и Vertica CE VM User Guide. Начало работы с утилитой командной строки \texttt{vsql} и т.д. можно по руководству \url{https://www.vertica.com/docs/VMs/Vertica_CE_VM_User_Guide.pdf}.
+
+Для работы с этой СУБД через помощью Python API есть своя библиотека \texttt{vertica\_python}\footnote{Устанавливается как обычно с помощью менеджера пакетов \texttt{pip}: \texttt{pip install vertica-python}} \url{https://github.com/vertica/vertica-python}
 
 \begin{lstlisting}[
 style = ironpython,
