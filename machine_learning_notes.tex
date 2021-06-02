@@ -2166,6 +2166,49 @@ logging.info(...)
 logging.error(...)
 \end{lstlisting}
 
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+# Модуль с описанием логгера
+_log_format = f"[%(asctime)s | %(levelname)s]: %(message)s"
+
+def make_file_handler() -> logging.FileHandler:
+	"""
+	Настраивает файловый хендлер
+	"""
+	file_handler = logging.FileHandler("app_logs.log")
+	file_handler.setLevel(logging.INFO)
+	file_handler.setFormatter(logging.Formatter(_log_format))
+	return file_handler
+
+def make_stream_handler() -> logging.FileHandler:
+	"""
+	Настраивает потоковый хендлер
+	"""
+	stream_handler = logging.StreamHandler(sys.stdout)
+	stream_handler.setLevel(logging.INFO)
+	stream_handler.setFormatter(logging.Formatter(_log_format))
+	return stream_handler
+
+def make_logger(logger_name: str) -> logging.Logger:
+	logger = logging.getLogger(logger_name)
+	logger.setLevel(logging.INFO)
+	logger.addHandler(make_file_handler())
+	logger.addHandler(make_stream_handler())
+	return logger
+
+# Модуль-1, в котором нужно использовать логгер
+logger = make_logger(__name__)
+...
+
+# Модуль-2, в котором нужно использовать логгер
+logger = make_logger(__name__)
+\end{lstlisting}
+
+
+
 \section{Бинарный поиск}
 
 В общем случае для списка из $ n $ элементов \emph{бинарный поиск} (при бинарном поиске исключается половина элементов) выполняется за $ \log_2 n $ шагов, тогда как простой поиск (последовательным перебором) будет выполнен за $ n $ шагов. Бинарный поиск работает только в том случае, если список отсортирован!
@@ -7105,7 +7148,7 @@ $ NewSampleWeight = \dfrac{1}{8} \, e^{-0.97} = 0.05 $ (было $ 1/8 = 0.125 $
 
 Введем обозначения:
 
-$ f_{T - 1} = (f_{T - 1, i})_{i = 1}^l = \sum_{T - 1}^{t=1} \alpha_t b_t(x_i) $ -- текущее приближение, а
+$ f_{T - 1} = (f_{T - 1, i})_{i = 1}^l = \sum^{t=1}_{T - 1} \alpha_t b_t(x_i) $ -- текущее приближение, а
 
 $ f_T = (f_{T, i})_{i = 1}^l = \sum_{t=1}^{T-1} \alpha_t b_t(x_i) + \alpha b(x_i) $ -- следующее приближение.
 
@@ -7135,7 +7178,7 @@ $ f_T = (f_{T, i})_{i = 1}^l = \sum_{t=1}^{T-1} \alpha_t b_t(x_i) + \alpha b(x_i
 		
 		\begin{itemize}
 		
-		\item базовый алгоритм, приближающий антиградиент
+		\item базовый алгоритм, приближающий антиградиент (т.е. базовый алгоритм обучается на \emph{псевдо-остатках})
 	\begin{align*}
 		b_t := \underset{b}{\argmin} \sum_{i=1}^{l} (b(x_i) + \mathcal{L}^{'}(f_i, y_i))^2,
 	\end{align*}
@@ -7153,7 +7196,38 @@ $ f_T = (f_{T, i})_{i = 1}^l = \sum_{t=1}^{T-1} \alpha_t b_t(x_i) + \alpha b(x_i
 	\end{itemize}
 \end{itemize}
 
-Можем выбирать произвольную функцию потерь, но внутри мы всегда решаем задачу регрессии методом наименьших квадратов.
+Еще одно описание алгоритма \emph{классического градиентного бустинга} (практически ничем не отличается от алгоритма из лекции Воронцова, но все-таки есть нюансы)
+\begin{itemize}
+	\item Вход: обучающий набор данных $ \{(x_i, y_i)\}_{i=1}^n $, дифференцируемая функция потерь $ L(y, F(x)) $, число итераций $ M $ (по сути число базовых алгоритмов в ансамбле)
+	\item Инициализировать модель постоянными значениями
+	\begin{align*}
+		F_0(x) = \underset{\gamma}{\arg \min} \sum_{i=1}^{n} L(y_i, \gamma).
+	\end{align*}
+
+    \item Цикл от $ m = 1 $ до $ M $:
+    \begin{itemize}
+    	\item Вычислить, так называемые \emph{псевдо-остатки}
+    	\begin{align*}
+    		\underset{i = 1, \ldots, n}{r_{im}} = - \Big[ \dfrac{\partial L(y_i, F(x_i))}{\partial F(x_i)} \Big]_{ F(x) = F_{m - 1}(x) }.
+    	\end{align*}
+    
+        \item Обучить базовый алгоритм (дерево решений) $ h_m(x) $ на псевдо-остатках; т.е. при обучении используется обучающий набор $ \{ (x_i, r_{im}) \}_{i=1}^n $.
+        
+        \item Вычислить коэффициент $ \gamma_m $, решив задачу одномерной оптимизации
+        \begin{align*}
+        	\gamma_m = \underset{\gamma}{\arg \min} \sum_{i = 1}^{n} L(y_i, F_{m - 1}(x_i) + \gamma h_m(x_i)).
+        \end{align*}
+    
+        \item Обновить модель 
+        \begin{align*}
+        	F_m(x) = F_{m - 1}(x) + \gamma_m h_m(x).
+        \end{align*}
+    \end{itemize}
+
+    \item Выход: $ F_M(x) $.
+\end{itemize}
+
+ЗАМЕЧАНИЕ: Можно выбирать \emph{произвольную функцию потерь}, но внутри мы \underline{всегда} решаем задачу \emph{регрессии методом наименьших квадратов}.
 
 ЗАМЕЧАНИЕ: если выборка сверхбольшая, то можно использовать не всю выборку $ X^l $, а случайную подвыборку без возвращений.
 
@@ -7207,6 +7281,27 @@ $ f_T = (f_{T, i})_{i = 1}^l = \sum_{t=1}^{T-1} \alpha_t b_t(x_i) + \alpha b(x_i
 		\item для оценивания важности признаков.
 	\end{itemize}
 \end{itemize}
+
+
+\section{Экстремальный градиентный бустинг с Catboost}
+
+Установить Catboost и требуемые расширения для Jupyter-lab можно так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+$ pip install catboost shap ipywidgets sklearn
+$ jupyter nbextension enable --py widgetsnbextension
+\end{lstlisting}
+
+Catboost имеет в арсенале два важные особенности:
+\begin{itemize}
+	\item реализация упорядоченного бустинга (Ordered Boosting), как альтернатива классическому градиентному бустингу, основанную на перестановках,
+	
+	\item инновационный алгоритм обработки категориальных признаков.
+\end{itemize}
+
+Обе техники используют случайные перестановки для борьбы со сдвигом прогноза, вызванным утечкой целевой переменной. \emph{Сдвиг прогноза} это артефакт всех алгоритмических реализаций градиентного бустинга.
 
 
 \section{Экстремальный градиентный бустинг с XGBoost}
