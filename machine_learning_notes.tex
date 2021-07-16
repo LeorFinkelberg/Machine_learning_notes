@@ -2411,6 +2411,28 @@ python file_name.py --config-path config.yaml
 \end{lstlisting}
 
 
+\section{Приемы работы с cProfile}
+
+Время выполнения приложения и распределение временных издержек по функциям можно посмотреть с помощью модуля \texttt{cProfile}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+python -m cProfile python_app.py > report.log
+\end{lstlisting}
+
+В файле \texttt{report.log} будут строки такого характера
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+980130 function calls (970679 primitive calls) in 1.333 seconds
+\end{lstlisting}
+
+С помощью \texttt{cProfile} можно, к примеру, показать, что конвейеры на генераторах значительно эффективнее в смысле временных издержек по сравнению с решениями на <<ванильных>> циклах \texttt{for}.
+
+
+
 \section{Приемы работы с MLflow}
 
 Ознакомиться с руководствами по использованию mlflow можно на ресурсе \url{https://mlflow.org/docs/latest/tracking.html}.
