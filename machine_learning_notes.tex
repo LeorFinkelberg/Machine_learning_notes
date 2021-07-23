@@ -2421,6 +2421,17 @@ numbers = none
 python -m cProfile python_app.py > report.log
 \end{lstlisting}
 
+Еще можно с помощью потокового редактора посмотреть интересующие строки в терминале
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+# вывести первые 5 строк из отчета cProfile
+python -m cProfile python_app.py | sed -n '1,5p'
+# вывести строку, содержащую подстроку 'seconds'
+python -m cProfile python_app.py | sed -n '/seconds/p'
+\end{lstlisting}
+
 В файле \texttt{report.log} будут строки такого характера
 \begin{lstlisting}[
 style = bash,
