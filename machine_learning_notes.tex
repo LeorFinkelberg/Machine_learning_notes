@@ -7434,6 +7434,151 @@ Catboost имеет в арсенале два важные особенност
 
 \section{Приемы работы с библиотекой для анализа временных рядов Darts}
 
+Библиотека \texttt{darts} представляет собой Python-библиотеку для прогнозирования на временных рядах. Включает различные модели: от классических ARIMA до моделей на базе глубоких нейронных сетей. Некоторые модели могут работать с многомерными временными рядами.
+
+\texttt{Darts} включает множество моделей, но не все из них поддерживают обучение на многомерных временных рядах. Модели, которые поддерживают обучение на многомерных временных рядах назыавют \emph{глобальными моделями}. На текущий момент в \texttt{darts} реализовано 4 глобальные модели:
+\begin{itemize}
+	\item RNN,
+	
+	\item Temporal Convolutional Networks (TCN),
+	
+	\item N-Beats,
+	
+	\item Transformer.
+\end{itemize} 
+
+Различают \emph{целевые временные ряды} (target time series), по которым мы собираемся строить прогноз, и \emph{вспомогательные временные ряды} (covariate time series), которые могут быть полезны при прогнозировании целевого временного ряда. Вспомогательные временные ряды еще называют внешними данными.
+
+Все глобальные модели, перечисленные выше, поддерживают обучение по нескольким временным рядам. Кроме того, все они (кроме N-Beats) имеют \emph{многомерную} и \emph{ковариационную поддержку}.
+
+Многомерная поддрежка означает, что модель может обучаться на многомерных временных рядах (т.е. временных рядах, которые имеют более одного измерения). Целевой временной ряд может иметь одно (как это часто бывает) или несколько измерений. Временной ряд с несколькими измерениями на самом деле является обычным временным рядом, где значения в каждой временной метке ассоциированы с векторами, а не скалярами.
+
+Ковариационная поддержка означает, что можно использовать вспомогательные временных ряды (внешние данные).
+
+Перечисленные модели содержат нейронную сеть, которая получает фрагменты временного ряда и возвращает прогноз. Фактическая внутренняя модель нейронной сети создается только во время обучения.
+
+Для управления поведением модели используется два параметра: \texttt{input\_chunk\_length} -- ширина окна -- и \texttt{output\_chunk\_length} -- <<длина>> выходных данных (прогноза), создаваемых моделью. 
+
+Пример с одномерным временным рядом. Будем использовать N-BEATS с окном в 24 точки (\texttt{input\_chunk\_length=24}) и прогнозом на следующие 12 точек (\texttt{output\_chunk\_length=12}). То есть модель строит прогноз на год, опираясь на последнием 2 года.
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+# fix python path if working locally
+from utils import fix_pythonpath_if_working_locally
+fix_pythonpath_if_working_locally()
+
+import pandas as pd
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+
+from darts import TimeSeries
+from darts.utils.timeseries_generation import gaussian_timeseries, linear_timeseries, sine_timeseries
+from darts.models import RNNModel, TCNModel, TransformerModel, NBEATSModel
+from darts.metrics import mape, smape
+from darts.dataprocessing.transformers import Scaler
+from darts.utils.timeseries_generation import datetime_attribute_timeseries
+from darts.datasets import AirPassengersDataset, MonthlyMilkDataset
+
+torch.manual_seed(1); np.random.seed(1)  # for reproducibility
+
+series_air = AirPassengersDataset().load()
+series_milk = MonthlyMilkDataset().load()
+
+series_air.plot(label='Number of air passengers')
+series_milk.plot(label='Pounds of milk produced per cow')
+plt.legend();
+
+scaler_air, scaler_milk = Scaler(), Scaler()
+series_air_scaled = scaler_air.fit_transform(series_air)
+series_milk_scaled = scaler_milk.fit_transform(series_milk)
+
+series_air_scaled.plot(label='air')
+series_milk_scaled.plot(label='milk')
+plt.legend();
+
+train_air, val_air = series_air_scaled[:-36], series_air_scaled[-36:]
+train_milk, val_milk = series_milk_scaled[:-36], series_milk_scaled[-36:]
+
+model_air = NBEATSModel(input_chunk_length=24, output_chunk_length=12, n_epochs=200, random_state=0)
+
+model_air.fit(train_air, verbose=True) # Traning loss: 0.0002
+
+# Прогноз строится на 36 точек, а параметр output_chunk_length=12. Но это не проблема. Просто внутренняя модель будет вызываться несколько раз на своих собственных выходах. То есть в данном случае внутренняя модель будет вызвана 3 раза
+pred = model_air.predict(n=36)
+
+series_air_scaled.plot(label='actual')
+pred.plot(label='forecast')
+plt.legend();
+print('MAPE = {:.2f}%'.format(mape(series_air_scaled, pred)))
+\end{lstlisting}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.65]{figures/darts_nbeats_air_pred.png}
+	\caption{ Пример использования N-BEATS для прогноза }\label{fig:darts_nbeats_air_pred}
+\end{figure}
+
+Пример обучения модели на нескольких временных рядах.
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+model_air_milk = NBEATSModel(input_chunk_length=24, output_chunk_length=12, n_epochs=100, random_state=0)
+model_air_milk.fit([train_air, train_milk], verbose=True)
+\end{lstlisting}
+
+Здесь при обучении использовались два временных ряда, поэтому при построении прогноза следует указать какой временной нужно рассмтривать как целевой, а какой -- как вспомогательный.
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+pred = model_air_milk.predict(
+    n=36,
+    series=train_air # здесь указывается имя временного ряда,
+                                     # для которого следует строить прогноз
+)
+\end{lstlisting}
+
+Пример обучения модели с учетом вспомогательных многомерных временных рядов
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+model_cov = RNNModel(
+    input_chunk=24,
+    training_length=32,
+    n_epochs=300,
+    random_state=0
+)
+
+model_cov.fit(
+    series=[train_air, train_milk],
+    covariates=[air_train_covariates, milk_train_covariates],
+    verbose=True
+)
+
+pred_cov = model_cov.predict(
+    n=12,
+    series=train_air, # имя переменной, связанной с временным рядом, для которого следует построить прогноз
+    covariates=air_covariates # передается вся информация о многомерных вспомогательных временных рядах
+)
+series_air_scaled.plot(label="actual")
+pred_cov.plot(label="forecast")
+plt.legend()
+\end{lstlisting}
+
+ЗАМЕЧАНИЕ: преобразовать временной ряд в обычный NumPy-массив можно с помощью метода \texttt{.values()}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+time_series.values().ravel() # 1D numpy-array
+\end{lstlisting}
+
 
 
 
