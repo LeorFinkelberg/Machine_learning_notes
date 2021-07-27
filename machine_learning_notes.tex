@@ -7434,6 +7434,12 @@ Catboost имеет в арсенале два важные особенност
 
 \section{Приемы работы с библиотекой для анализа временных рядов Darts}
 
+\subsection{Общие сведения}
+
+Darts поддерживает работу с большими наборами данных, которые не помещаются в оперативную память. Для этого вместо метода \texttt{fit()} следует использовать метод \texttt{fit\_from\_dataset()}, что позволит организовать процедуру отложенных вычислений. Можно реализовать свой собственный набор данных, создав подкласс \texttt{TrainingDataset}.
+
+\subsection{Модели на пакете временных рядов}
+
 Библиотека \texttt{darts} представляет собой Python-библиотеку для прогнозирования на временных рядах. Включает различные модели: от классических ARIMA до моделей на базе глубоких нейронных сетей. Некоторые модели могут работать с многомерными временными рядами.
 
 \texttt{Darts} включает множество моделей, но не все из них поддерживают обучение на многомерных временных рядах. Модели, которые поддерживают обучение на многомерных временных рядах назыавют \emph{глобальными моделями}. На текущий момент в \texttt{darts} реализовано 4 глобальные модели:
@@ -7578,6 +7584,95 @@ numbers = none
 ]
 time_series.values().ravel() # 1D numpy-array
 \end{lstlisting}
+
+\subsection{Рекуррентные нейронные сети}
+
+Darts включает две модели на базе рекуррентных нейронных сетей: \texttt{RNNModel} и \texttt{BlockRNNModel}. Модель \texttt{RNNModel} полностью рекуррентна. Эта модель подходит для тех случаев, когда целевой временной ряд сильно зависит от вспомогательного.
+
+Модель \texttt{BlockRNNModel} имеет рекуррентный этап кодирования входов и этап декодирования полносвязной нейронной сети, который строит прогноз длины \texttt{output\_chunk\_length} на основе последних скрытых состояний этапа декодирования.
+
+Пример
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+import pandas as pd
+import shutil
+from sklearn.preprocessing import MinMaxScaler
+from tqdm import tqdm_notebook as tqdm
+
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
+
+from darts import TimeSeries
+from darts.dataprocessing.transformers import Scaler
+from darts.models import RNNModel, ExponentialSmoothing, BlockRNNModel
+from darts.metrics import mape
+from darts.utils.statistics import check_seasonality, plot_acf
+from darts.datasets import AirPassengersDataset, SunspotsDataset
+from darts.utils.timeseries_generation import datetime_attribute_timeseries
+
+series = AirPassengersDataset().load()
+
+train, val = series.split_after(pd.Timestamp("1959-01-01"))
+transformer = Scaler()
+train_transformed = transformer.fit_transform(train)
+val_transformed = transformer.transform(val)
+series_transformed = transformer.transform(series)
+
+year_series = datetime_attribute_timeseries(
+    pd.date_range( 
+        start=series.start_time(),
+        freq=series.freq_str,
+        periods=1000
+    ),
+    attribute="year",
+    one_hot=False
+)
+
+year_series = Scaler().fit_transform(year_series)
+month_series = datetime_attribute_timeseries(year_series, attribute="month", one_hot=True)
+covariates = year_series.stack(month_series)
+cov_train, cov_val = covariates.split_after(pd.Timestamp("1959-01-01"))
+
+rnnmodel = RNNModel(
+    model = "LSTM",
+    hidden_dim=20,
+    dropout=0,
+    batch_size=16,
+    n_epochs=300,
+    optimizer_kwargs={"lr" : 1e-3},
+    model_name = "AIR_RNN",
+    log_tensorboard = True,
+    random_state = 42,
+    training_length=20,
+    input_chunk_length=14,
+    force_reset=True,
+)
+
+rnnmodel.fit(
+    train_transformed, # целевой временной ряд
+    covariates=cov_train, # обучающий поднабор вспомогательного многомерного временного ряда
+    val_series=val_transformed, # тестовый поднабор целевого временного ряда
+    val_covariates=cov_val, # тестовый поднабор вспомогательного многомерного временного ряда
+    verbose=True
+)
+
+def eval_model(model):
+    pred_series = rnnmodel.predict(n=26, covariates=covariates)
+    series_transformed.plot(label="actual")
+    pred_series.plot(label="forecast")
+    plt.title(f"MAPE: {mape(pred_series, val_transformed):.2f}")
+
+eval_model(rnnmodel)
+
+best_model = RNNModel.load_from_checkpoint(model_name="AIR_RNN", best=True)
+\end{lstlisting}
+
 
 
 
