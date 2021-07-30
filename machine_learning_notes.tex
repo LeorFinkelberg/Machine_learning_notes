@@ -7673,7 +7673,474 @@ eval_model(rnnmodel)
 best_model = RNNModel.load_from_checkpoint(model_name="AIR_RNN", best=True)
 \end{lstlisting}
 
+\section{Приемы работы с библиотекой для анализа временных рядов sktime}
 
+Библиотека \texttt{sktime} \url{https://www.sktime.org/en/latest/} предназначена для задач классификации, регрессии, кластеризации и прогнозирования на временных рядах.
+
+
+\section{Приемы работы с открытой Amazon-библиотекой для анализа временных рядов GluonTS}
+
+В июне 2019 Amazon выложила в открытый доступ библиотеку GluonTS \url{https://github.com/awslabs/gluon-ts}, позволяющую максимально быстро и эффективно строить, оценивать и использовать модели временных рядов, основанные на глубоком обучении и вероятностном подходе.
+
+До этого момента один из самых открытых библиотек для работы с временными рядами был \texttt{Prophet}. В отличие от GluonTS, Prophet использует более простой метод -- аддитивную нелинейную модель временного ряда. Prophet плохо работает на данных без ярко выраженной сезонности!
+
+GluonTS использует рекуррентные нейронные сети, свертки и механизмы внимания. В частности, GluonTS содержит:
+\begin{itemize}
+	\item инструменты, необходимые для построения и обучения наиболее распростаненных архитектур нейронных сетей, а также компоненты для моделирования и трансформации вероятностных распределений;
+	
+	\item механизмы для загрузки и предварительной обработки данных, в том числе автоматической генерации признаков из временных рядов;
+	
+	\item несколько готовых к использованию state-of-the-art прогностических моделей;
+	
+	\item инструменты для оценки и сравнения различных моделей.
+\end{itemize}
+
+GluonTS возвращает не точечный прогноз, а вероятностное распределение. Таким образом, можно с легкостью оперировать доверительными интервалами прогноза и с любой наперед заданной вероятностью получать диапазон наиболее вероятных будущих значений ряда.
+
+Установить GluonTS можно так
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+pip install -U mxnet~=1.7 gluonts
+\end{lstlisting}
+
+Рассмотрим пример с использованием глубокой авторегрессионной моделью \href{https://arxiv.org/abs/1704.04110}{DeepAR}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+from gluonts.model.deepar import DeepAREstimator
+from gluonts.mx.trainer import Trainer
+
+estimator = DeepAREstimator(
+    freq="D",
+    prediction_length=30,
+    trainer=Trainer(epochs=20)
+)
+
+predictor = estimator.train(training_data=training_data)
+\end{lstlisting}
+
+
+
+
+\section{Приемы работы с библиотекой tsfresh для автоматического проектирования признаков на временных рядах}
+
+\subsection{Формат данных}
+
+Функция извлечения признаков \texttt{extract\_features} принимает на вход объект \texttt{pandas.DataFrame}. Рассмотрим четыре наиболее важных параметра этой функции:
+\begin{itemize}
+	\item \texttt{column\_id}: задает индентификационный номер экзепмляра. Признаки рассчитываются индивидуально для каждого экземпляра (то есть для каждого уникального идентификационного номера). Результирующая матрица признаков будет содержать по одной строке на каждый идентификационный номер. Например, каждый робот это отдельный экземпляр, поэтому у каждого робота свой идентификационный номер.
+	
+	\item \texttt{column\_sort}: здесь указывается имя столбца, по которому можно сортировать временной ряд (например, временные метки). Если опустить этот параметр, то будет предполагаться, что столбец уже отсортирован по возрастанию.
+	
+	\item \texttt{column\_value}: здесь указывается столбец, который содержит фактические значения временных рядов. Это, например, могут быть измерения датчиков.
+	
+	\item \texttt{column\_kind}: здесь указываются имена типов временных рядов.
+\end{itemize}
+
+ЗАМЕЧАНИЕ: ни один из этих параметров не может содержать \texttt{NaN}, \texttt{Inf} или \texttt{-Inf}.
+
+Вот перечень различных форматов входных данных:
+\begin{itemize}
+	\item плоский формат DataFrame,
+	
+	\item пакетный формат DataFrame,
+	
+	\item словарь плоских DataFrame.
+\end{itemize}
+
+Разница между плоским и пакетным форматом заключается в том, что в случае пакетного формата требуется указывать параметры \texttt{column\_value} и \texttt{column\_kind}, а в случае плоского формата нет.
+
+Если параметрам \texttt{column\_value} и \texttt{column\_kind} передано значение \texttt{None}, то предполагается, что временной ряд находится в \emph{плоском} формате. Это означает, что каждый отдельный временной ряд должен быть представлен отдельным столбцом.
+
+Например, если ведется наблюдение за двумя объектами A и B и фиксируются какие-то измерения в моменты времены $ t_1, t_2, t_3 $, то набор данных будет выглядеть, как показано на \pic{fig:flat_df_ts}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.25]{figures/flat_df_ts.png}
+	\caption{ Временные ряды, представленные в плоском формате }\label{fig:flat_df_ts}
+\end{figure}
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+...
+extract_features(
+    column_id="id",
+    column_sort="time",
+    column_value=None,
+    column_kind=None
+)
+\end{lstlisting}
+
+Если параметры \texttt{column\_value} и \texttt{column\_kind} заданы, то предполагается, что временной ряд имеет \emph{пакетный} (или длинный) формат. Это значит, что разные типы временных рядов располагаются в одном и том же столбце (см. \pic{fig:stack_df_ts}).
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+...
+extract_features(
+    column_id="id",
+    column_sort="time",
+    column_kind="kind",
+    column_value="value"
+)
+\end{lstlisting}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.25]{figures/stack_df_ts.png}
+	\caption{ Временные ряды, представленные в пакетном формате }\label{fig:stack_df_ts}
+\end{figure}
+
+Еще можно разбить набор данных по столбцу \texttt{kind} и тогда временной ряд будет в формате словаря плоских DataFrame (см. \pic{fig:dict_flat_df_ts}).
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+extract_featuers(
+    column_id="id",
+    column_sort="time",
+    column_kind=None,
+    column_value="value"
+)
+\end{lstlisting}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.55]{figures/dict_flat_df_ts.png}
+	\caption{ Временные ряды, представленные в формате плоских DataFrame }\label{fig:dict_flat_df_ts}
+\end{figure}
+
+На выходе всегда будет получать объект DataFrame, представленного на рис. \pic{fig:output_ts}. Такой формат данных ожидает получить на вход функция отбора признаков \texttt{tsfresh.select\_features()}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.25]{figures/output_ts.png}
+	\caption{ Матрица сгенерированных признаков. Выходной формат }\label{fig:output_ts}
+\end{figure}
+
+
+
+
+\subsection{Отбор признаков}
+
+Общая проблема отбора признаков заключается в идентификации всех сильно и слабо релевантных атрибутов. Эту проблему особенно сложно решить для классификации и регрессии временных рядов в промышленных приложениях, таких как предиктивное обслуживание или оптимизация производственных линий, для которых каждое значение целевого вектора связано с несколькими временными рядами.
+
+Для того чтобы ограничить число нерелевантных признаков, tsfresh использует FeatuRe Extraction based on Scalabel Hypothesis test.
+
+Алгоритм вызывается с помощью
+
+\texttt{tsfresh.feature\_selection.relevance.calculate\_relevance\_table()}.
+
+Это эффективный алгоритм, масштабируемый алгоритм извлечения признаков, который отбирает доступные признаки на раннем этапе конвейера машинного обучения для задач классификации или регрессии. При этом контролируется ожидаемый процент отобранных, но не имеющих отношения к делу.
+
+Чтобы воспользоваться функцией \texttt{calculate\_relevance\_table} нужно просто передать набор данных в формате \texttt{pd.DataFrame} и целевой вектор в формате \texttt{pd.Series}.
+
+Процесс отбора признаков состоит из  трех этапов (\pic{fig:tsfresh_feature_filter}):
+\begin{itemize}
+	\item на первом этапе с помощью функции \texttt{tsfresh.feature\_extraction.feature\_calculators} вычисляются признаки, например
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from tsfresh.feature_extraction import feature_calculators
+
+feature_calculators.abs_energy(X.iloc[0, :]) # 5152503.753728688
+feature_calculators.variation_coefficient(X.iloc[0, :]) # 3.3398199304406013
+\end{lstlisting}
+	
+	\item на втором этапе каждый признак \emph{индивидуально} и \emph{независимо} оценивается с точки зрения его значимости для прогнозируемой цели.
+	
+	Эти тесты содержаться в подмодуле \texttt{tsfresh.feature\_selection.significance\_tests}.
+	
+	Результатом тестов является вектор p-value, количественно определяющий значимость каждого признака для прогнозируемой переменной
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+# низкое значение p-value свидетельствует о высокой важности признака!!!
+from tsfresh.feature_selection import significance_tests
+significance_tests.target_binary_feature_real_test(X.iloc[:, 0], y, "mann") # 2.6929427727965647e-68
+significance_tests.target_binary_feature_real_test(X.iloc[:, 9], y, "mann") # 0.537185602135624
+\end{lstlisting}
+
+    \item на третьем этапе вектор p-value оценивается на основе процедуры Бенджамини-Екутиели, чтобы решить какие признаки оставить (процедура заимствована из пакета \texttt{statsmodel}).
+\end{itemize}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[scale=0.35]{figures/tsfresh_feature_filter.png}
+	\caption{ Процедура отбора признаков с помощью tsfresh }\label{fig:tsfresh_feature_filter}
+\end{figure}
+
+\section{Извлечение признаков}
+
+Когда данные одномерного временного ряда приведены к нужному для tsfresh формату (например, к длинному формату), можно к этому набору данных применить функцию \texttt{tsfresh.utilities.dataframe\_functions.roll\_time\_series()}. У этой функции есть два основные параметра:
+\begin{itemize}
+	\item \texttt{max\_timeshift}: если передано значение отличное от \texttt{None}, то окно будет иметь максимальную ширину равную \texttt{max\_timeshift}. В противном случае (т.е. когда \texttt{max\_timeshift=None}) ширина окна будет увеличиваться до бесконечности.
+	
+	\item \texttt{min\_timeshift}: все извлеченные временные ряды, имеющие длину меньшую или равную \texttt{min\_timeshift} будут исключены из результатов.
+\end{itemize}
+
+Новый набор данных \texttt{df\_rolled} состоять из старого набора данных плюс новый столбец \texttt{id}. Например
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+# df
+#	id	            time	      value
+# 0	0	2020-01-31	-0.349435
+# 1	0	2020-02-29	-1.933673
+# 2	0	2020-03-31	
+
+from tsfresh.utilities.dataframe_functions import roll_time_series
+df_rolled = roll_time_series(
+	df,
+	column_id="id",
+	column_sort="time"
+)
+
+df_rolled.sort_values(by="id")
+# id	             time	       value
+# 2	(0, 2020-01-31 00:00:00)	2020-01-31	-0.349435 Группа 1
+# ----------------------------------------------
+# 0	(0, 2020-02-29 00:00:00)	2020-01-31	-0.349435 Группа 2
+# 1	(0, 2020-02-29 00:00:00)	2020-02-29	-1.933673
+# ----------------------------------------------
+# 3	(0, 2020-03-31 00:00:00)	2020-01-31	-0.349435 Группа 3
+# 4	(0, 2020-03-31 00:00:00)	2020-02-29	-1.933673
+# 5	(0, 2020-03-31 00:00:00)	2020-03-31	-1.910476
+
+# Группы можно посмотреть так
+df_rolled.groupby("id").groups # {(0, 2020-01-31 00:00:00): [2], (0, 2020-02-29 00:00:00): [0, 1], (0, 2020-03-31 00:00:00): [3, 4, 5]}
+
+# Номера групп 
+df_rolled.groupby("id").ngroup()
+# 0
+# 1
+# 1
+# 2
+# 2
+# 2
+\end{lstlisting}
+
+ЗАМЕЧАНИЕ: Вторым элементом мультииндекса будет <<старшая>> временная метка диапазона.
+
+Теперь можно применить функцию \texttt{extract\_features} для извлечения признаков
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from tsfresh.feature_extraction import settings
+from tsfresh.utilities.dataframe_functions import impute
+
+df_features = extract_features(
+    df_rolled,
+    column_id="id",
+    column_sort="time",
+    impute_function=impute,
+    default_fc_parameters=settings.MinimalFCParameters()
+)
+\end{lstlisting}
+
+На выходе будет получена матрица признаков со сгенерированным вектором признаков для каждой уникальной комбинации мультииндекса (то есть для каждой группы-окна)
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+	                       value__sum_values	value__median	value__mean	value__length	value__standard_deviation	value__variance	
+0	2020-01-31	-0.349435	-0.349435	-0.349435	1.0	0.000000	0.000000
+     2020-02-29	-2.283108	-1.141554	-1.141554	2.0	0.792119	0.627453
+     2020-03-31	-4.193584	-1.910476	-1.397861	3.0	0.741410	0.549689
+\end{lstlisting}
+
+ОЧЕНЬ ВАЖНО: признаки вычисляются для каждой группы-окна, сгруппированной по мультииндексу: сначала вычисляются средняя, медиана, дисперсия и пр. по первой группе, состоящей из одного элемента, затем эти же признаки -- для второй группы, состоящей из двух элементов, затем эти же признаки -- для третьей группы, состоящей из трех элементов и т.д. Например, как видно из результирующей матрицы признаков, значение -2.283108 получено как сумма по элементам второй группы (т.е. по второму окну), а значение 0.549689, как дисперсия по трем элементам (т.е. по третьему окну) и так далее
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+fake_df.loc[0, "value"] + fake_df.loc[1, "value"] # value_sum_values = -2.283108
+np.array([
+    fake_df.loc[0, "value"],
+    fake_df.loc[1, "value"],
+    fake_df.loc[2, "value"]
+]).std() ** 2  # value_variance = 0.549689
+\end{lstlisting}
+
+Если в функции \texttt{roll\_time\_series()} параметру \texttt{min\_timeshift} передать значение 1, то группы-окна, состоящие из одного элемента будут исключены из результирующей матрицы признаков (как малоинформативные).
+
+Шаблон отображения ординат временного ряда на векторы признаков:
+\begin{itemize}
+	\item Приводим временной ряд к нужному формату данных (например, к пакетному-длинному),
+	
+	\item Применяем функцию \texttt{roll\_time\_series()} для того чтобы сформировать группы-окна, состоящие из одного элемента, двух элементов и т.д. Вычисленное значение признака привязывается к крайней правой временной метке рассматриваемой группы-окну.
+	
+	\item Применяем функцию \texttt{extract\_features()} чтобы для каждой временной метки получить вектор признаков. Если задать \texttt{min\_timeshift}, то можно из результирующей матрицы признаков исключить группы заданного размера. А если задать \texttt{max\_timeshift}, то можно скользить по временному ряду окном (а не расширять исходное окно до бесконечности, начиная с первых элементов временного ряда). Группа-окно временного ряда будет включать \texttt{max\_timeshift + 1} элементов.
+\end{itemize}
+
+В итоге получается, что в общем случае каждой временной метке временного ряда отвечает вектор сгенерированных признаков. И таким образом мы приходим к обычной базовой аналитической таблице.
+
+ОЧЕНЬ ВАЖНО: если экземпляр представляет собой временной ряд, то вектор признаков вычисляется по всем ординатам этого временного ряда. Другими словами, временной ряд отображается на вектор сгенерированных признаков.
+
+
+
+
+\subsection{Загрузка больших наборов данных}
+
+Для загрузки данных из формата parquet
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import dask.dataframe as dd
+from tsfresh import extract_features
+
+df = dd.read_parquet(...)
+
+X = extract_features(
+    df,
+    column_id="id",
+    column_sort="time",
+    pivot=False
+)
+
+res = X.compute()
+\end{lstlisting}
+
+
+
+При работе с временными рядами могут возникнуть две ситуации:
+\begin{itemize}
+	\item Требуется построить прогноз, основываясь на предыдущих значениях временного ряда,
+	
+	\item Требуется использовать временной ряд как признак экземпляра.
+\end{itemize}
+
+Основная идея библиотеки \texttt{tsfresh} -- сгенерировать как можно больше признаков (если позволяют вычислительные ресурсы), а затем при помощи моделей или статистических критериев из этих признаков уже можно отобрать только те, которые релевантны задаче. Безусловно, не все признаки окажутся полезными.
+
+Рассмотрим прмер распознавания активности человека по данным акселерометра
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from tsfresh.examples.har_dataset import download_har_dataset, load_har_dataset, load_har_classes
+from tsfresh import extract_features, extract_relevant_features, select_features
+from tsfresh.utilities.dataframe_functions import impute
+from tsfresh.feature_extraction import settings
+
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+
+import pandas as pd
+import numpy as np
+\end{lstlisting}
+
+Пусть у нас есть 7352 наблюдения, каждому из которых соответствет 128 показаний акселерометра и одна из шести возможных активностей
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+download_har_dataset()
+data = load_har_dataset()
+y = load_har_classes()
+\end{lstlisting}
+
+То есть эти 128 наблюдений акселерометра можно рассматривать как признаки. Другими словами, каждый экземпляр обучающего набора данных это временной ряд.
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+X_train, X_test, y_train, y_test = train_test_split(data, y, test_size=.2)
+
+cl = DecisionTreeClassifier()
+cl.fit(X_train, y_train)
+print(classification_report(y_test, cl.predict(X_test)))
+\end{lstlisting}
+
+В tsfresh есть различные варианты извлечения признаков, которыми можно воспользоваться из коробки и особенно не думать на счет содержания. Отличаются они лишь количеством рассчитываемых признаков, а значит и скоростью обработки данных. Один из основных наборов признаков это \texttt{TimeBasedFCParameters}. Этот метод посчитает по нашему ряду линейный тренд, возьмет оттуда значение коэффициента R2, intercept, slope, стандартную ошибку и p-value и все это сделаем новыми признаками.
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+settings_time = settings.TimeBasedFCParameters()
+settings_time.update(settings_minimal)
+\end{lstlisting}
+
+Есть еще \texttt{EfficientFCParameters}, \texttt{Efficient}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+settings_efficient = settings.EfficientFCParameters()
+\end{lstlisting}
+
+Построим новое признаковое пространство. Для начала следует преобразовать набор данных в формат, необходимый для работы библиотеки. В этом формате у нас будет всего два столбца: в первом будут храниться вся наблюдения акселерометров, а во втором -- соответствующий индекс наблюдения.
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+data_long = pd.DataFrame(
+    {
+        0 : data.values.flatten(), # разворачивает весь набор по строке в одну длинную строку
+        # np.arange(5).repeat(3)    # array([0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4])
+        1 : np.arange(data.shape[0]).repeat(data.shape[1])
+    }
+)
+\end{lstlisting}
+
+Извлекаем признаки при помощи \texttt{extract\_features}, указав в качестве параметров для извлечения соответствующий список (\texttt{settings.TimeBasedFCParameters}, \texttt{Efficient} и т.д.).
+
+Также укажем для параметра \texttt{impute\_function} фукнцию \texttt{impute} из \texttt{tsfresh.utilities.dataframe\_functions}. Эта функция автоматически заполнит все пропуски в получившимся наборе данных (если они вдруг там появятся).
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+X = extract_features(
+    data_long,
+    column_id=1,
+    impute_function=impute,
+    default_fc_parameters=settings.EfficientFCParameters
+)
+X.shape # (7352, 788)
+\end{lstlisting}
+
+Теперь каждому экземпляру набора данных отвечает не 128 сырых значений акселерометра (ординаты акселерограммы как признаки), а 788 извлеченных признаков.
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+cl = DecisionTreeClassifier()
+cl.fit(X_train, y_train)
+\end{lstlisting}
+
+Но скорее всего, многие из извлеченных признаков на самом деле не нужны для построения предсказаний и могут быть спокойно исключены. Для этого в библиотеке есть метод \texttt{select\_features}, который рассчитывает важность текущего признака для предсказания класса. После расчета ненужные признаки отбрасываются по p-value, при этом в функцию зашита поправка Бенджамини-Иекутиели на множественное тестирование.
+
+ЗАМЕЧАНИЕ: \texttt{select\_features} работает только с бинарной классификацией!
+
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+relevant_features = set()
+
+for label in y.unique():
+    y_train_binary = y_train == label
+    X_train_filtered = select_features(X_train, y_train_binary)
+    relevant_features = relevant_features.union(set(X_train_filtered.columns))
+    
+len(relevant_features) # 352
+\end{lstlisting}
+
+В результате получили более компактное пространство признаков.
 
 
 
@@ -12437,6 +12904,8 @@ shap.force_plot(
     X_train.iloc[row, :]  # 2-ая строка в обучающем наборе данных
 )
 \end{lstlisting}
+
+ЗАМЕЧАНИЕ: <<объяснитель>> (explaner) строится на обучающем наборе данных, а значения Шепли вычисляются для тестового набора.
 
 Можно считать, что \texttt{explainer.expected\_value} это значение, полученное усреднением целевого вектора по точкам обучающего набора данных, т.е. \texttt{y\_train.mean()}.
 
