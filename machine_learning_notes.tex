@@ -7879,7 +7879,7 @@ significance_tests.target_binary_feature_real_test(X.iloc[:, 9], y, "mann") # 0.
 	\caption{ Процедура отбора признаков с помощью tsfresh }\label{fig:tsfresh_feature_filter}
 \end{figure}
 
-\section{Извлечение признаков}
+\subsection{Извлечение признаков}
 
 Когда данные одномерного временного ряда приведены к нужному для tsfresh формату (например, к длинному формату), можно к этому набору данных применить функцию \texttt{tsfresh.utilities.dataframe\_functions.roll\_time\_series()}. У этой функции есть два основные параметра:
 \begin{itemize}
@@ -8012,6 +8012,50 @@ X = extract_features(
 
 res = X.compute()
 \end{lstlisting}
+
+\subsection{Загрузка фрагментов данных с поддрежкой joblib}
+
+Если требуется загрузить фрагмент набора данных и для него посчитать признаки, то можно воспользоваться библиотекой \texttt{joblib}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from pathlib2 import Path, PosixPath, WindowsPath
+from typing import Union
+
+def features_generator(
+    path_fo_file: Union[PosixPath, WindowsPath]
+) -> pd.DataFrame:
+    """
+    Возвращает одну строку сгенерированных признаков в формате pd.DataFrame
+    """
+    signals = pd.read_csv(path_to_file)
+    sed_id = path_fo_file.name.split(".")[0]
+    
+    extracted_features = extract_features(
+        signals,
+        column_id = "segment_id",
+        default_fc_parameters=EffecientFCParameters(),
+        impute_function = impute,
+        n_jobs = 0,
+        desable_progressbar = False,
+        chunksize = None
+    )
+    
+    return extracted_features
+    
+
+# delayed принимает каррировано функцию и ее аргумент
+rows = Parallel(n_jobs=-1)(
+    delayed(features_generator)(segment) for segment in train_files_list
+)
+
+train_set = pd.concat(rows, axis=0)
+\end{lstlisting}
+
+
+
+\subsection{Общий порядок работы}
 
 
 
