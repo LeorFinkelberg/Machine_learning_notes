@@ -7677,6 +7677,60 @@ best_model = RNNModel.load_from_checkpoint(model_name="AIR_RNN", best=True)
 
 Библиотека \texttt{sktime} \url{https://www.sktime.org/en/latest/} предназначена для задач классификации, регрессии, кластеризации и прогнозирования на временных рядах.
 
+Извлечение признаков из временного ряда с использованием библиотеки \texttt{sktime} и подбор гиперпараметров с \texttt{skopt.BayesSearchCV}
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+from sktime.transformations.panel.tsfresh import TSFreshFeatureExtractor
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import StratifiedKFold
+from skopt import BayesSearchCV
+from skopt.plots import plot_objective
+from collections import OrderedDict
+
+...
+X_train, X_test, y_train, y_test = train_test_split(X, y)
+
+pipe = make_pipeline(
+    TSFreshFeatureExtractor(
+        default_fc_parameters="minimal",
+        show_warnings=False
+    ),
+    MinMaxScaler(),
+    GradientBoostingClassifier()
+).fit(X_train, y_train)
+
+pipe.get_params()
+
+params = {
+	"gradientboostingclassifier__learning_rate" : Real(0.5, 1.0, prior="uniform"),
+	"gradientboostingclassifier__max_features" : Real(0.9, 1.0, prior="uniform"),
+	"gradientboostingclassifier__max_depth" : Integer(5, 10),
+}
+
+opt = BayesSearchCV(
+    estimator=pipe,
+    search_spaces=params,
+    cv=StratifiedKFold(n_splits=3, shuffle=True),
+    n_iter=50,
+)
+
+opt.fit(X_train, y_train)
+
+opt.best_params_
+
+dimensions = [key.replace("gradientboostingclassifier__", "") for key in opt.best_params_.keys()]
+
+plot_objective(
+    opt.optimizer_results_[0],
+    dimensions=dimensions,
+    size=3.5,
+    levels=10
+);
+\end{lstlisting}
+
+
 
 \section{Приемы работы с открытой Amazon-библиотекой для анализа временных рядов GluonTS}
 
