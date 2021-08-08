@@ -6631,6 +6631,43 @@ from sklearn.metrics import brier_score_loss
 brier_score_loss(y_true, y_prob)
 \end{lstlisting}
 
+
+\section{Приемы распараллеливания приложений с \\библиотекой \texttt{concurrent.futures}}
+
+Future-объекты в Python (как и, в частности, в Scala) инкапсулируют ожидающие операции. 
+
+ЗАМЕЧАНИЕ: в Python Future-объекты не должны создаваться пользователем! Предполагается, что эти объекты создает библиотека.
+
+Пример организации работы многопотчного приложения
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+# пул из 10 потоков
+with ThreadPoolExecutor(max_workers=10) as executor:
+    path_iterdir = pathlib2.Path(".").iterdir() # генератор
+    paths_to_csv_files = ( # генератор
+        path for path in path_iterdir if path.suffix == ".csv"
+    )
+    collection_of_futures = (
+        executor.submit(count_lines, path_to_file) # submit возвращает Future-объект
+        for path_to_file in paths_to_csv_files
+    )
+    
+    # возвращает результаты в порядке готовности
+    for future in futures.as_completed(collection_of_futures):
+        print(future.result())
+\end{lstlisting}
+
+ЗАМЕЧАНИЕ: \texttt{executor.map} запоминает порядок вызова. То есть, если первой вызванной функции потребовалось 10 сек на получение результата, а всем остальным по 1 сек., то программа будет заблокированна на 10 сек., поскольку она пытается получить первый результат генератора, возвращенного функцией \texttt{map}. После этого все остальные результаты будут получены без блокировки, потому что соответствующие функции уже завершились.
+
+Однако, часто предпочтительнее получать результаты по мере их готовности вне зависимости от того, в каком порядке подавались задачи. Для этого потребуется комбинация метода \texttt{executor.submit} и функции \texttt{futures.as\_completed}.
+
+Комбинация \texttt{executor.submit} и \texttt{futures.as\_completed} обладает большей гибкостью, чем \texttt{executor.map}, потому что ей можно подавать различные вызываемые объекты и аргументы, тогда как \texttt{executor.map} предназначен для выполнения одного и того же вызываемого объекта с разными аргументами.
+
+Кроме того, множество будущих объектов, передаваемых \texttt{futures.as\_completed}, может поступать от нескольких исполнителей -- одни из них могли быть созданы экземпляром \texttt{ThreadPoolExecutor}, другие -- экземпляром \texttt{ProcessPoolExecutor}.
+
+
 \section{Автоматический анализ кода с платформой DeepsSource}
 
 Платформа DeepSource \url{https://deepsource.io/} позволяет проводить автоматический анализ кода на анти-паттерны, проблемы с производительностью и поиск уязвимостей при каждом коммите или pull-request. Кроме того платформа отслеживает количество зависимостей, покрытие документацией и пр.
