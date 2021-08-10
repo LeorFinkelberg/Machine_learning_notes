@@ -12417,7 +12417,8 @@ numbers = none
 # 2020/08/19, 200
 
 >>> import pandas as pd
->>> data = pd.read_csv('test_file.csv', index_col='date', parse_date=True)
+>>> data = pd.read_csv('test_file.csv', index_col='date', parse_dates=True)
+# >>> data = pd.read_csv('test_file.csv', index_col='date', parse_dates=["date"])
 >>> type(data.index[0]) # pandas._libs.tslibs.timestamps.Timestamp
 \end{lstlisting}
 
@@ -12430,6 +12431,21 @@ style = ironpython,
 numbers = none
 ]
 X.isna().any(axis=0)
+\end{lstlisting}
+
+Иногда бывает необходимо распарсить временную ветку
+\begin{lstlisting}[
+style = ironpython,
+numbers = none,
+]
+from datetime import datetime
+custom_date_parser = lambda x: datetime.strptime(x, "%Y-%d-%m %H:%M:%S")
+
+df = pd.read_csv(
+    "data.csv",
+    parse_dates=["date"],
+    date_parser=custom_date_parser
+)
 \end{lstlisting}
 
 \subsection{Управление стилями объекта \texttt{DataFrame}}
