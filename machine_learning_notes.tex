@@ -2443,6 +2443,79 @@ numbers = none
 С помощью \texttt{cProfile} можно, к примеру, показать, что конвейеры на генераторах значительно эффективнее в смысле временных издержек по сравнению с решениями на <<ванильных>> циклах \texttt{for}.
 
 
+\section{Приемы работы с \texttt{csvtool} и \texttt{csvkit}}
+
+\subsection{\texttt{csvtool}}
+
+Установливаем как обычно с помощью \texttt{pip}
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install csvtool
+\end{lstlisting}
+
+Если на Windows командная оболочка <<не видит>> утилиты библиотеки \texttt{csvtool} (\texttt{csvstat}, \texttt{csvlook} и т.д.), то нужно убедиться, что путь \texttt{\~/.local/bin} добавлен в переменную \texttt{\$PATH}. Для этого домашней директории пользователя создаем файл \texttt{.bashrc} и там включаем указанный выше путь в переменную окружения путей
+\begin{lstlisting}[
+title = {\~{}/.bashrc},
+style = bash,
+numbers = none	
+]
+export PATH=~/.local/bin:${PATH}
+\end{lstlisting}
+
+Затем остается только перезагрузить файл
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+source .bashrc
+\end{lstlisting}
+
+Примеры использования
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+csvtool -c 2 -s '^Chevy$' test.csv | csvtool --no-header c 1,5,3
+\end{lstlisting}
+
+\subsection{\texttt{csvkit}}
+
+Установить можно так
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+pip install csvkit
+\end{lstlisting}
+
+Документация здесь \url{https://csvkit.readthedocs.io/en/latest/}.
+
+Примеры использования
+\begin{lstlisting}[
+style = bash,
+numbers = none	
+]
+# чтобы посмотреть какие признаки есть и какой у них тип
+csvstat --type titanic.csv
+
+# вывести анализ по указанным трем признакам
+csvcut -c Pclass,Sex,Cabin titanic.csv | csvstat
+
+# вывести число уникальных значений по каждому столбцу
+csvcut -c Sex,Age,Cabin titanic.csv | csvstat --freq
+# 1. Sex: { "male": 100, "female": 56 }
+# 2. Age: { "None": 30, "21": 8, "22": 6, "19": 6, "29": 6 }
+# 3. Cabin: { "None": 125, "C123": 2, "C23 C25 C27": 2, "D26": 2, "C85": 1 }
+
+# возвращает булево значение, если в столбце есть хотя бы один пропуск
+csvcut -c Sex,Age,Cabin titanic.csv | csvstat --nulls
+# 1. Sex: False
+# 2. Age: True
+# 3. Cabin: True
+\end{lstlisting}
+
 
 \section{Приемы работы с MLflow}
 
