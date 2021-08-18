@@ -11598,7 +11598,7 @@ conda install -c conda-forge fbprophet
 
 \texttt{Prophet} была разработана для прогнозирования большого числа различных бизнес-показателей и строит неплохие baseline-прогнозы.
 
-По сути Prophet-модель представляет собой аддитивную регрессионную модель
+По сути Prophet-модель представляет собой \emph{аддитивную регрессионную модель}
 \begin{align*}
 	y(t) = g(t) + s(t) + h(t) + \varepsilon_t,
 \end{align*}
@@ -11724,8 +11724,87 @@ a = add_changepoints_to_plot(fig.gca(), model, forecast)
     \hat{\mu}_{\rm MAP} = \dfrac{\sigma_m^2}{n\sigma_m^2 + \sigma_v^2} \sum_{j=1}^{n}x_j.
 \end{align*}
 
+\subsubsection{Настройка гиперпараметров}
 
+Настройка гиперпараметров выполняется следующим образом
+\begin{lstlisting}[
+style = ironpython,
+numbers = none	
+]
+import itertools
+import numpy as np
+import pandas as pd
 
+param_grid = {
+	'changepoint_prior_scale': [0.001, 0.01, 0.1, 0.5],
+	'seasonality_prior_scale': [0.01, 0.1, 1.0, 10.0],
+}
+
+# Generate all combinations of parameters
+all_params = [
+    dict(zip(param_grid.keys(), v))
+    for v in itertools.product(*param_grid.values())
+]
+rmses = []  # Store the RMSEs for each params here
+
+# Use cross validation to evaluate all parameters
+for params in all_params:
+    m = Prophet(**params).fit(df)  # Fit model with given params
+    df_cv = cross_validation(
+        m,
+        cutoffs=cutoffs,
+        horizon='30 days',
+        parallel="processes"
+     )
+    df_p = performance_metrics(df_cv, rolling_window=1)
+    rmses.append(df_p['rmse'].values[0])
+
+# Find the best parameters
+tuning_results = pd.DataFrame(all_params)
+tuning_results['rmse'] = rmses
+print(tuning_results)
+\end{lstlisting}
+
+Перечень параметров, которые имеет смысл настраивать:
+\begin{itemize}
+	\item \texttt{changepoint\_prior\_scale}: это, вероятно, самый важный параметр. Он определяет \emph{гибкость тренда}. И в частности насколько сильно меняется тренд в точках изменения тренда. Значение по умолчанию (0.05), как правило, работает корректно. Более высокие значения позволят иметь больше точек излома тренда. Если основания считать, что настройка этого параметра улучшит модель, то имеет смысл рассмотреть диапазон $ [0.001; 0.5] $.
+	
+	\item \texttt{seasonality\_prior\_scale}: этот параметр определяет гибкость сезонности. Значение по умолчанию (10) работает для большинства случаев, но если есть основания считать, что настройка этого параметра улучшит модель, то имеет смысл рассмотреть диапазон $ [0.01; 10] $.
+	
+	\item \texttt{holidays\_prior\_scale}: управляет гибкостью настройки эффекта праздников.
+	
+	\item \texttt{seasonality\_mode}: лучше настраивать, просто посмотрев на временной ряд.
+\end{itemize}
+
+Перечень параметров, которые можно было бы попробывать настроить:
+\begin{itemize}
+	\item \texttt{changepoint\_range}
+\end{itemize}
+
+Перечень параметров, которые нет смысла настраивать:
+\begin{itemize}
+	\item \texttt{growth},
+	
+	\item \texttt{changepoints},
+	
+	\item \texttt{n\_changepoints},
+	
+	\item \texttt{yearly\_seasonality},
+	
+	\item \texttt{weekly\_seasonality},
+	
+	\item \texttt{daily\_seasonality},
+	
+	\item \texttt{holidays},
+	
+	\item \texttt{mcmc\_samples},
+	
+	\item \texttt{interval\_width},
+	
+	\item \texttt{uncertainty\_samples},
+	
+	\item \texttt{stan\_backend}.
+\end{itemize}
 
 
 \subsection{Преобразование нестационарного временного ряда в стационарный}
