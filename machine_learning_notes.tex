@@ -2243,6 +2243,76 @@ logger = make_logger(__name__)
 \end{lstlisting}
 
 
+\subsection{Использование ini-файлов для управления логгированием}
+
+Пример ini-файла
+\begin{lstlisting}[
+style = bash,
+title = {\sffamily config\_file.ini},
+numbers = none
+]
+[loggers] # перечисляем логгеры; root и sLogger это просто имена, на которые потом можно будет ссылаться
+# имена разделов для логгеров конструируются по формуле logger_<logger_name>
+keys= root,sLogger
+
+[handlers] # перечисляем хендлеры; consoleHandler и fileHandler это просто имена, на которые потом можно будет ссылаться
+# имена разделов для хендлеров конструируются по формуле handler_<handler_name>
+keys= consoleHandler,fileHandler
+
+[formatters] # перечисляем форматеры; fileFormatter и consoleFormatter это просто имена, на которые потом можно будет ссылаться
+# имена разделов для форматеров конструируются по формуле formatter_<formatter_name>
+keys= fileFormatter,consoleFormatter
+
+[logger_root] # задаем значения атрибутам логгера root
+level= INFO
+handlers= consoleHandler
+
+[logger_sLogger]
+level= DEBUG  # уровень логгирования пользовательского логгера
+handlers= consoleHandler,fileHandler  # добавляем к логгеру пооковый и файловый хендлеры
+qualname= sLogger
+propagate= 0
+
+[handler_consoleHandler]
+class= StreamHandler
+level= WARNING
+formatter= consoleFormatter
+args= (sys.stdout,)
+
+[handler_fileHandler]
+class= FileHandler
+level= DEBUG
+formatter= fileFormatter
+args= ('logfile.log',)
+
+[formatter_fileFormatter]
+format= {asctime}: {levelname} - {message}
+style= {
+
+[formatter_consoleFormatter]
+format= {levelname} - {message}
+style= {
+datefmt=
+\end{lstlisting}
+
+Использование в Python-коде
+\begin{lstlisting}[
+style = ironpython,
+numbers = none
+]
+import logging, logging.config
+
+
+logging.config.fileConfig("config_file.ini")  # прочитали конфигурационный ini-файл
+logger = logging.getlogger("sLogger") # создали экземпляр логгера
+
+logger.debug("debug message") # в консоль ничего не выведет, т.к. у потокового хендлера уровень логгирования WARNING. Но выведет в log-файл, т.к. у файлового хендлера уровень логгирования DEBUG
+logger.info("info message") # снова в консоль ничего не выведет, т.к. INFO выше WARNING (уровня в потоковом хендлере)
+logger.warn("warn message")
+logger.error("error message")
+logger.critical("critical message")
+\end{lstlisting}
+
 
 \section{Бинарный поиск}
 
