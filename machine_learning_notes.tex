@@ -6060,6 +6060,35 @@ from train_pipeline import train_pipeline # из модуля train_pipeline и�
 \end{lstlisting}
 \end{itemize}
 
+Иногда бывает удобно разместить в директории \texttt{tests} поддиректорию с данными (конфигурационные файлы, модифицированные специальным образом; небольшие csv-файлы и пр.). Доступ к этим данным можно получить, указав путь от директории \texttt{tests}, т.е.
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+...
+tests/
+  data/
+    highs_relax_mode.set
+\end{lstlisting}
+
+
+\begin{lstlisting}[
+title = {\sffamily tests/unit/strategy\_units/test\_solver\_unit.py},
+style = ironpython,
+numbers = none
+]
+def test_solver_unit_highs_with_unsupported_solver_name():
+	UNSUPPORTED_SOLVER_NAME = "mosek"
+
+	with pytest.raises(UnknownSolverNameError):
+		solver = Solver(
+			solver_name=UNSUPPORTED_SOLVER_NAME,
+			mode="relax",
+			path_to_lp_file=pathlib2.Path("./tests/data/496.lp"),
+			path_to_set_file=pathlib2.Path("./tests/data/highs_relax_mode.set"),
+			path_to_sol_file=pathlib2.Path("./"),
+		)
+\end{lstlisting}
 
 \subsection{Пропуск тестов}
 
@@ -6069,7 +6098,7 @@ title = {\sffamily Пропуск тестов},
 style = ironpython,
 numbers = none	
 ]
-imoprt pytest
+import pytest
 
 try:
     import mylib
