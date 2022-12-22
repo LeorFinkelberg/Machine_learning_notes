@@ -6167,6 +6167,25 @@ markers = [
 ...
 \end{lstlisting}
 
+Или с помощью \texttt{pytest.ini}
+
+\begin{lstlisting}[
+title = {\sffamily pytest.ini},
+style = bash,
+numbers = none
+]
+# example: pytest -v -m 'not unit'
+[pytest]
+markers =
+	strategy: only for Strategies (deselect with -m 'not strategy')
+	unit: only for Units (deselect with -m 'not unit')
+	SCIP: only for SCIP solver tests (deselect with -m 'not SCIP')
+
+[run]
+	branch = True
+	omit = tests/*
+\end{lstlisting}
+
 Метка \verb|-m| принимает и более сложные выражения, поэтому можно, например, запустить все тесты, которые \textit{не} имеют метки
 \begin{lstlisting}[
 style = bash,
