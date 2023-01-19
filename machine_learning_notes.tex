@@ -11514,6 +11514,47 @@ numbers = none
 conda install --name myenv --file spec-file.txt
 \end{lstlisting}
 
+\subsection{Создание виртуального окружения с помощью conda и pip}
+
+Пусть требуется установить часть пакетов с помощью менеджера \texttt{conda}, а часть -- с помощью \texttt{pip}. Файл зависимостей \texttt{requirements.txt} имеет вид
+\begin{lstlisting}[
+title = {\sffamily requirements.txt},
+style = bash,
+numbers = none
+]
+# Data
+numpy >= 1.16.*
+pandas >= 1.0.0, < 1.3.0; python_version == '3.7'
+pandas >= 1.3.0; python_version >= '3.8'
+
+# Optimization
+pyomo >= 6.4.2; python_version >= '3.8'
+...
+\end{lstlisting}
+
+Менеджер пакетов \texttt{conda} для конфигурирования окружения использует файл \texttt{environment.yaml}
+\begin{lstlisting}[
+title = {\sffamily environment.yaml},
+style = bash,
+numbers = none
+]
+name: test-env # имя окружения
+dependencies:
+   - python=3.8
+   - conda-forge::pyscipopt=3.4.0 # PySCIPOpt версии 3.4.0 с канала conda-forge
+   - pip
+   - pip:
+        - -r requirements.txt  # будет использован файл requirements.txt текущей директории
+\end{lstlisting}
+
+Для создания окружения остается запустить команду
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+conda env create --file environment.yaml
+\end{lstlisting}
+
 
 \subsection{Активация/деактивация виртуального окружения}
 
