@@ -1368,7 +1368,7 @@ pypi
 testpypi
 
 [testpypi]
-repository: https://test.pypi.org/legacy
+repository: https://test.pypi.org/legacy/  # обязательно слеш в конце!
 username = your_username
 password = your_pypitest_password
 
@@ -1382,8 +1382,8 @@ password = your_pypi_password
 style = bash,
 numbers = none	
 ]
-twine upload -r testpypi dist/*  # на TestPyPI
-twine upload dist/*  # на PyPI
+twine upload -r testpypi dist/* --verbose # на TestPyPI
+twine upload dist/* --verbose # на PyPI
 \end{lstlisting}
 
 Если бы пакет был установлен на PyPI, то его можно было бы установить на локальную машину как обычно \texttt{pip install package\_name}.
