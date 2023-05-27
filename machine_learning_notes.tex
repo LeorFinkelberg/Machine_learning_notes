@@ -1198,7 +1198,8 @@ pip install --index-url https://test.pypi.org/simple/ advancedstatistic
 # или если у пакета есть зависимости
 pip install \
   --index-url https://test.pypi.org/simple/ \
-  --extra-index-url https://pypi.org/simple advancedstatistic
+  --extra-index-url https://pypi.org/simple \  # это нужно, если требуются доп. зависимости типа scikit-learn etc.
+  advancedstatistic
 \end{lstlisting}
 
 В сеансе Python
