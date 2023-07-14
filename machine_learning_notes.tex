@@ -1186,7 +1186,7 @@ python setup.py sdist bdist_wheel
 style = bash,
 numbers = none	
 ]
-twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+twine upload -r testpypi dist/* --verbose
 \end{lstlisting}
 
     \item Для проверки можно установить пакет с TestPyPI на локальную машину
