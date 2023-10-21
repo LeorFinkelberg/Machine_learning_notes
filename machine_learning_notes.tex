@@ -15346,6 +15346,14 @@ All done!
 
 Здесь говориться, что отработал хук \texttt{black} и отформатировал 2 файла.
 
+Для того чтобы сделать коммит без вызова утилиты \verb*|pre-commit| нужно просто добавить флаг \verb*|--no-verify|
+\begin{lstlisting}[
+style = bash,
+numbers = none
+]
+$ git commit -v --no-verify
+\end{lstlisting}
+
 
 \section{Разработка интерактивных карт с помощью библиотеки Folium}
 
