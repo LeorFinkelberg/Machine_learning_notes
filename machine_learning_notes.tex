@@ -125,6 +125,25 @@ $ mprof plot -t "Record memory usage"
 \end{lstlisting}
 
 
+\section{Временная сложность ML-алгоритмов}
+
+Здесь $ n $ -- число экземпляров, $ p $ -- число признаков, $ a_t $ -- число деревьев, $ a_c $ -- число классов, $ a_{sv} $ -- число опорных векторов:
+\begin{itemize}
+	\item Naive Bayes: для обучения $ O(n \, p) $, а для прогноза $ O(p) $,
+	
+	\item kNN: для обучения $ O(1) $, для прогноза $ O(n \, p) $,
+	
+	\item ANN: для обучения $ O(n \, p) + \text{KMeans Complexity} $, для прогноза $ O(p) $,
+	
+	\item Decision Tree: для обучения $ O(n^2 \, p) $, для прогноза $ O(p) $,
+	
+	\item Random Forest: для обучения $ O(n^2 \, p \, a_t) $, для обучения $ O(p \, a_t) $,
+	
+	\item SVM: для обучения $ O(n^2 \, p + n^3) $, для прогноза $ O(a_{sv} \, p) $,
+	
+	\item Multi + SVM: для обучения $ O(O(\text{SVM}) \, a_c)) $, для прогноза $ O(O(\text{SVM}) \, a_c \, O(\text{sort}(classes))) $.
+\end{itemize}
+
 
 \section{Теория алгоритмов и структуры данных}
 
